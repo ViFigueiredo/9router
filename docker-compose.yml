@@ -46,6 +46,13 @@ services:
       no_proxy: ${no_proxy:-}
     depends_on:
       - headroom
+    networks:
+      default:
+      # Nginx Proxy Manager proxies this host from the external overlay
+      # "public"; the alias keeps the short name 9router resolvable there.
+      npm:
+        aliases:
+          - 9router
 
   headroom:
     image: ghcr.io/chopratejas/headroom:latest
@@ -53,7 +60,14 @@ services:
     restart: always
     ports:
       - "8787:8787"
+    networks:
+      default:
 
 volumes:
   9router-data:
     name: 9router-data
+
+networks:
+  npm:
+    external: true
+    name: public
