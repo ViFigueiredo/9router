@@ -7,14 +7,43 @@ services:
       - "20128:20128"
     volumes:
       - 9router-data:/app/data
-    env_file:
-      - .env
     environment:
       DATA_DIR: /app/data
       PORT: "20128"
       HOSTNAME: "0.0.0.0"
       NODE_ENV: production
       HEADROOM_URL: http://headroom:8787
+
+      # No env_file on purpose: Portainer git stacks only accept plain string
+      # entries and never materialize a .env from the repository, so deploy
+      # would fail on the missing file. Instead every configurable value flows
+      # through ${VAR} interpolation:
+      #   - Portainer: variables set in the stack UI are exported to the
+      #     compose process and substituted here.
+      #   - Local `docker compose up`: docker compose auto-loads a local .env
+      #     file from the project directory for interpolation.
+      # Required values fail fast (:?) instead of booting insecure defaults.
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      INITIAL_PASSWORD: ${INITIAL_PASSWORD:?INITIAL_PASSWORD must be set}
+      API_KEY_SECRET: ${API_KEY_SECRET:?API_KEY_SECRET must be set}
+      MACHINE_ID_SALT: ${MACHINE_ID_SALT:?MACHINE_ID_SALT must be set}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      ENABLE_REQUEST_LOGS: ${ENABLE_REQUEST_LOGS:-false}
+      OBSERVABILITY_ENABLED: ${OBSERVABILITY_ENABLED:-true}
+      REQUIRE_API_KEY: ${REQUIRE_API_KEY:-false}
+      BASE_URL: ${BASE_URL:-http://localhost:20128}
+      NEXT_PUBLIC_BASE_URL: ${NEXT_PUBLIC_BASE_URL:-http://localhost:20128}
+      CLOUD_URL: ${CLOUD_URL:-https://9router.com}
+      NEXT_PUBLIC_CLOUD_URL: ${NEXT_PUBLIC_CLOUD_URL:-https://9router.com}
+      SEARXNG_URL: ${SEARXNG_URL:-}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      http_proxy: ${http_proxy:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      https_proxy: ${https_proxy:-}
+      ALL_PROXY: ${ALL_PROXY:-}
+      all_proxy: ${all_proxy:-}
+      NO_PROXY: ${NO_PROXY:-}
+      no_proxy: ${no_proxy:-}
     depends_on:
       - headroom
 
