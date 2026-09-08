@@ -62,6 +62,11 @@ services:
       - "8787:8787"
     networks:
       default:
+      # NPM proxies the Headroom dashboard (memory.figcodes.tech) from the
+      # external "public" overlay; the alias keeps the short name resolvable.
+      npm:
+        aliases:
+          - headroom
 
 volumes:
   9router-data:
