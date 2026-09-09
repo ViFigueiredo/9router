@@ -275,9 +275,11 @@ export function getComboModelsFromData(modelStr, combosData) {
  * @param {string} [options.comboName] - Name of the combo (for round-robin tracking)
  * @param {string} [options.comboStrategy] - Strategy: "fallback" or "round-robin"
  * @param {number|string} [options.comboStickyLimit=1] - Requests per combo model before switching
+ * @param {boolean} [options.autoSwitch=true] - Float capability-matching models to the front
+ * @param {Function} [options.healthSorter=null] - (models) => models; deprioritizes slow/failing models. Injected app-side; null → unchanged order
  * @returns {Promise<Response>}
  */
-export async function handleComboChat({ body, models, handleSingleModel, log, comboName, comboStrategy, comboStickyLimit = 1, autoSwitch = true }) {
+export async function handleComboChat({ body, models, handleSingleModel, log, comboName, comboStrategy, comboStickyLimit = 1, autoSwitch = true, healthSorter = null }) {
   // Apply rotation strategy if enabled
   let rotatedModels = getRotatedModels(models, comboName, comboStrategy, comboStickyLimit);
 
@@ -292,7 +294,19 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
       rotatedModels = reordered;
     }
   }
-  
+
+  // Model-health soft-skip: deprioritize tagged slow/failing models (stable).
+  // Runs last so it wins over round-robin rotation and capability auto-switch.
+  // Injected app-side (engine stays pure); null → identity.
+  if (healthSorter) {
+    try {
+      const reordered = await healthSorter(rotatedModels);
+      if (Array.isArray(reordered)) rotatedModels = reordered;
+    } catch {
+      // fail-open: keep today's order
+    }
+  }
+
   let lastError = null;
   let earliestRetryAfter = null;
   let lastStatus = null;
