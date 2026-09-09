@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 import { Button } from "@/shared/components";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
+import ModelHealthBadge from "@/shared/components/ModelHealthBadge";
 
-function PassthroughModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting }) {
+function PassthroughModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting, health }) {
   const borderColor = testStatus === "ok"
     ? "border-green-500/40"
     : testStatus === "error"
@@ -28,7 +29,10 @@ function PassthroughModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias
       </span>
 
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{modelId}</p>
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium truncate">{modelId}</p>
+          <ModelHealthBadge health={health} />
+        </div>
 
         <div className="flex items-center gap-1 mt-1">
         <code className="text-xs text-text-muted font-mono bg-sidebar px-1.5 py-0.5 rounded">{fullModel}</code>
@@ -85,11 +89,25 @@ PassthroughModelRow.propTypes = {
   onTest: PropTypes.func,
   testStatus: PropTypes.oneOf(["ok", "error"]),
   isTesting: PropTypes.bool,
+  health: PropTypes.shape({ tag: PropTypes.string }),
 };
 
 export default function PassthroughModelsSection({ providerAlias, modelAliases, customModels, copied, onCopy, onDeleteAlias, onAddCustomModel, onDeleteCustomModel }) {
   const [newModel, setNewModel] = useState("");
   const [adding, setAdding] = useState(false);
+  const [healthByModel, setHealthByModel] = useState({});
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/model-health?provider=${encodeURIComponent(providerAlias)}`);
+        const data = await res.json();
+        if (!cancelled && data.health) setHealthByModel(data.health);
+      } catch { /* badge stays unknown */ }
+    })();
+    return () => { cancelled = true; };
+  }, [providerAlias]);
 
   const allModels = getProviderCustomModelRows({
     customModels,
@@ -154,6 +172,7 @@ export default function PassthroughModelsSection({ providerAlias, modelAliases, 
               copied={copied}
               onCopy={onCopy}
               onDeleteAlias={() => source === "custom" ? onDeleteCustomModel(id) : onDeleteAlias(alias)}
+              health={healthByModel[id]}
             />
           ))}
         </div>

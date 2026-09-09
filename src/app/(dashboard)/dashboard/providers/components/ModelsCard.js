@@ -6,9 +6,10 @@ import { Card, Button, Modal } from "@/shared/components";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { getProviderAlias } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import ModelHealthBadge from "@/shared/components/ModelHealthBadge";
 
 // ── ModelRow ───────────────────────────────────────────────────
-export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting }) {
+export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting, health }) {
   const borderColor = testStatus === "ok" ? "border-green-500/40" : testStatus === "error" ? "border-red-500/40" : "border-border";
   const iconColor = testStatus === "ok" ? "#22c55e" : testStatus === "error" ? "#ef4444" : undefined;
 
@@ -19,7 +20,10 @@ export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCusto
           {testStatus === "ok" ? "check_circle" : testStatus === "error" ? "cancel" : "smart_toy"}
         </span>
         <div className="flex flex-col gap-1">
-          <code className="text-xs text-text-muted font-mono bg-sidebar px-1.5 py-0.5 rounded">{fullModel}</code>
+          <div className="flex items-center gap-2">
+            <code className="text-xs text-text-muted font-mono bg-sidebar px-1.5 py-0.5 rounded">{fullModel}</code>
+            <ModelHealthBadge health={health} />
+          </div>
           {model.name && <span className="text-[9px] text-text-muted/70 italic pl-1">{model.name}</span>}
         </div>
         {onTest && (
@@ -64,6 +68,7 @@ ModelRow.propTypes = {
   onDeleteAlias: PropTypes.func,
   onTest: PropTypes.func,
   isTesting: PropTypes.bool,
+  health: PropTypes.shape({ tag: PropTypes.string }),
 };
 
 // ── AddCustomModelModal ────────────────────────────────────────
@@ -116,6 +121,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
   const [testingModelId, setTestingModelId] = useState(null);
   const [testError, setTestError] = useState("");
   const [showAddCustomModel, setShowAddCustomModel] = useState(false);
+  const [healthByModel, setHealthByModel] = useState({});
 
   const providerAlias = providerAliasOverride || getProviderAlias(providerId);
   const effectiveType = kindFilter || "llm";
@@ -134,6 +140,18 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/model-health?provider=${encodeURIComponent(providerAlias)}`);
+        const data = await res.json();
+        if (!cancelled && data.health) setHealthByModel(data.health);
+      } catch { /* badge stays unknown */ }
+    })();
+    return () => { cancelled = true; };
+  }, [providerAlias]);
 
   const handleSetAlias = async (modelId, alias) => {
     const fullModel = `${providerAlias}/${modelId}`;
@@ -241,6 +259,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
                 onTest={() => handleTestModel(model.id)}
                 isTesting={testingModelId === model.id}
                 isFree={model.isFree}
+                health={healthByModel[model.id]}
               />
             );
           })}
@@ -258,6 +277,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
               onTest={() => handleTestModel(model.id)}
               isTesting={testingModelId === model.id}
               isCustom
+              health={healthByModel[model.id]}
             />
           ))}
 

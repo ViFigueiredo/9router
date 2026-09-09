@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import PropTypes from "prop-types";
 import { Button } from "@/shared/components";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
-function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting }) {
+import ModelHealthBadge from "@/shared/components/ModelHealthBadge";
+
+function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting, health }) {
   const borderColor = testStatus === "ok"
     ? "border-green-500/40"
     : testStatus === "error"
@@ -26,7 +28,10 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
         {testStatus === "ok" ? "check_circle" : testStatus === "error" ? "cancel" : "smart_toy"}
       </span>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{modelId}</p>
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium truncate">{modelId}</p>
+          <ModelHealthBadge health={health} />
+        </div>
         <div className="flex items-center gap-1 mt-1">
           <code className="text-xs text-text-muted font-mono bg-sidebar px-1.5 py-0.5 rounded">{fullModel}</code>
           <div className="relative group/btn">
@@ -77,6 +82,34 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
   const [importing, setImporting] = useState(false);
   const [testingModelId, setTestingModelId] = useState(null);
   const [modelTestResults, setModelTestResults] = useState({});
+  const [healthByModel, setHealthByModel] = useState({});
+  const [validating, setValidating] = useState(false);
+
+  const activeConnection = connections.find((conn) => conn.isActive !== false);
+
+  const refreshHealth = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/model-health?provider=${encodeURIComponent(providerStorageAlias)}`);
+      const data = await res.json();
+      if (data.health) setHealthByModel(data.health);
+    } catch {
+      // badge state stays empty (unknown) on failure
+    }
+  }, [providerStorageAlias]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/model-health?provider=${encodeURIComponent(providerStorageAlias)}`);
+        const data = await res.json();
+        if (!cancelled && data.health) setHealthByModel(data.health);
+      } catch {
+        // badge state stays empty (unknown) on failure
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [providerStorageAlias]);
 
   const handleTestModel = async (modelId) => {
     if (testingModelId) return;
@@ -93,6 +126,24 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
       setModelTestResults((prev) => ({ ...prev, [modelId]: "error" }));
     } finally {
       setTestingModelId(null);
+      refreshHealth();
+    }
+  };
+
+  const handleValidateAll = async () => {
+    if (validating || !activeConnection) return;
+    setValidating(true);
+    try {
+      const res = await fetch(`/api/providers/${activeConnection.id}/test-models`, { method: "POST" });
+      const data = await res.json();
+      const okMap = {};
+      for (const r of data.results || []) okMap[r.modelId] = r.ok ? "ok" : "error";
+      setModelTestResults(okMap);
+    } catch {
+      // ignore — health refresh below still runs
+    } finally {
+      setValidating(false);
+      refreshHealth();
     }
   };
 
@@ -110,7 +161,6 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
       alert("Model already exists for this provider.");
       return;
     }
-
     setAdding(true);
     try {
       await onAddCustomModel(modelId);
@@ -124,9 +174,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
 
   const handleImport = async () => {
     if (importing) return;
-    const activeConnection = connections.find((conn) => conn.isActive !== false);
     if (!activeConnection) return;
-
     setImporting(true);
     try {
       const res = await fetch(`/api/providers/${activeConnection.id}/models`);
@@ -148,9 +196,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
         await onAddCustomModel(modelId);
         importedCount += 1;
       }
-      if (importedCount === 0) {
-        alert("No new models were added.");
-      }
+      if (importedCount === 0) alert("No new models were added.");
     } catch (error) {
       console.log("Error importing models:", error);
     } finally {
@@ -185,11 +231,14 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
         <Button size="sm" variant="secondary" icon="download" onClick={handleImport} disabled={!canImport || importing}>
           {importing ? "Importing..." : "Import from /models"}
         </Button>
+        <Button size="sm" variant="secondary" icon="science" onClick={handleValidateAll} disabled={!canImport || validating}>
+          {validating ? "Validating..." : "Validate all"}
+        </Button>
       </div>
 
       {!canImport && (
         <p className="text-xs text-text-muted">
-          Add a connection to enable importing models.
+          Add a connection to enable importing and validating models.
         </p>
       )}
 
@@ -206,6 +255,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
               onTest={connections.length > 0 ? () => handleTestModel(id) : undefined}
               testStatus={modelTestResults[id]}
               isTesting={testingModelId === id}
+              health={healthByModel[id]}
             />
           ))}
         </div>
