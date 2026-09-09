@@ -1,3 +1,8 @@
+# Unreleased
+
+## Features
+- feat(model-health): tag provider models ok/slow/failing from pings + 1h traffic telemetry (auto-calibrated per provider) and deprioritize tagged models to the tail of combo sequences
+
 # v0.5.69 (2026-09-05)
 
 ## Features
