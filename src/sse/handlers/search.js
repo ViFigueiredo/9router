@@ -13,6 +13,7 @@ import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
+import { reorderModelsByHealth } from "@/lib/modelHealth/sorter.js";
 
 /**
  * Handle web search request for the SSE/Next.js server.
@@ -83,7 +84,8 @@ export async function handleSearch(request) {
       log,
       comboName: providerInput,
       comboStrategy,
-      comboStickyLimit
+      comboStickyLimit,
+      healthSorter: reorderModelsByHealth,
     });
   }
 

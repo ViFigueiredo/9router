@@ -16,6 +16,8 @@ import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { handleComboChat, handleFusionChat, detectRequiredCapabilities } from "open-sse/services/combo.js";
+import { reorderModelsByHealth } from "@/lib/modelHealth/sorter.js";
+import { recordObservation } from "@/lib/modelHealth/sink.js";
 import { augmentModelsWithCapacityAdapter, withCapacityAdapterStripping, getActiveAdapterStrategy } from "open-sse/services/capacityAdapter.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
@@ -134,7 +136,8 @@ export async function handleChat(request, clientRawRequest = null) {
       log,
       comboName: modelStr,
       comboStrategy,
-      comboStickyLimit
+      comboStickyLimit,
+      healthSorter: reorderModelsByHealth,
     });
   }
 
@@ -211,7 +214,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         log,
         comboName: modelStr,
         comboStrategy,
-        comboStickyLimit
+        comboStickyLimit,
+        healthSorter: reorderModelsByHealth,
       });
     }
     log.warn("CHAT", "Invalid model format", { model: modelStr });
@@ -304,7 +308,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         await clearAccountError(credentials.connectionId, credentials, model);
         // "Consecutive" strikes: a success clears the breaker for this pair.
         clearAntigravityStrikes(credentials.connectionId, model);
-      }
+      },
+      onModelObservation: recordObservation,
     });
 
     if (result.success) return result.response;
