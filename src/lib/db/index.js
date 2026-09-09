@@ -55,6 +55,11 @@ export {
   getDisabledModels, getDisabledByProvider, disableModels, enableModels,
 } from "./repos/disabledModelsRepo.js";
 
+// Model health
+export {
+  getModelHealth, getModelHealthByProvider, updateModelHealth,
+} from "./repos/modelHealthRepo.js";
+
 // Usage
 export {
   statsEmitter, trackPendingRequest, getActiveRequests,
