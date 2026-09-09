@@ -38,6 +38,21 @@ describe("modelHealth sink", () => {
     expect(snap["gpt-4o"].tag).toBe(classifier.HEALTH_TAGS.FAILING);
   });
 
+  it("keeps prior lastPing on account-level ping failure (429), fatal pings still fail", async () => {
+    // Fresh provider+model: account-level 429 ping must not create a failing lastPing.
+    await sink.recordObservation({ provider: "edge", model: "edge-1", ok: false, status: 429, isPing: true });
+    let snap = await sink.getHealthSnapshot("edge");
+    expect(snap["edge-1"].tag).not.toBe(classifier.HEALTH_TAGS.FAILING);
+    expect(snap["edge-1"].lastPingAt).toBeNull();
+
+    // An ok ping followed by a model-fatal 404 ping still tags the model failing.
+    await sink.recordObservation({ provider: "edge", model: "edge-1", ok: true, isPing: true });
+    await sink.recordObservation({ provider: "edge", model: "edge-1", ok: false, status: 404, isPing: true });
+    snap = await sink.getHealthSnapshot("edge");
+    expect(snap["edge-1"].lastPingAt).toBeTypeOf("number");
+    expect(snap["edge-1"].tag).toBe(classifier.HEALTH_TAGS.FAILING);
+  });
+
   it("records auth errors without failing the model", async () => {
     await sink.recordObservation({ provider: "openai", model: "gpt-4o", ok: false, status: 429 });
     const snap = await sink.getHealthSnapshot("openai");

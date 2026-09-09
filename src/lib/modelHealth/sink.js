@@ -23,7 +23,11 @@ export async function recordObservation({ provider, model, kind = "llm", ok, sta
       const base = prev || { kind, events: [], lastPing: null, tag: HEALTH_TAGS.UNKNOWN, tagComputedAt: null };
       const events = pruneEvents(base.events || [], ts, HEALTH_THRESHOLDS.windowMs);
       events.push({ ts, ok: !!ok, ttftMs: pingTtft ?? ttftMs, fatal });
-      const lastPing = isPing ? { at: ts, ok: !!ok, latencyMs: pingTtft } : (base.lastPing || null);
+      // Persist lastPing only for pings whose outcome is meaningful for model
+      // health: success (ok) or a model-fatal failure. Account-level failures
+      // (401/403/429, isFatalEvent=false) keep the previous lastPing so they
+      // never tag the model failing.
+      const lastPing = isPing && (ok || fatal) ? { at: ts, ok: !!ok, latencyMs: pingTtft } : (base.lastPing || null);
       return { ...base, kind, events, lastPing };
     });
 
