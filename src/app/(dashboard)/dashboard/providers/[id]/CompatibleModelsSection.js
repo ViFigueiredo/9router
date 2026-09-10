@@ -6,6 +6,14 @@ import { Button } from "@/shared/components";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
 import ModelHealthBadge from "@/shared/components/ModelHealthBadge";
 
+// Single source of the model-health fetch: used by the mount effect below and
+// by refreshHealth() after test/validate actions — never duplicated.
+async function fetchModelHealth(provider) {
+  const res = await fetch(`/api/model-health?provider=${encodeURIComponent(provider)}`);
+  const data = await res.json();
+  return data.health || null;
+}
+
 function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting, health }) {
   const borderColor = testStatus === "ok"
     ? "border-green-500/40"
@@ -89,9 +97,8 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
 
   const refreshHealth = useCallback(async () => {
     try {
-      const res = await fetch(`/api/model-health?provider=${encodeURIComponent(providerStorageAlias)}`);
-      const data = await res.json();
-      if (data.health) setHealthByModel(data.health);
+      const health = await fetchModelHealth(providerStorageAlias);
+      if (health) setHealthByModel(health);
     } catch {
       // badge state stays empty (unknown) on failure
     }
@@ -101,9 +108,8 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/model-health?provider=${encodeURIComponent(providerStorageAlias)}`);
-        const data = await res.json();
-        if (!cancelled && data.health) setHealthByModel(data.health);
+        const health = await fetchModelHealth(providerStorageAlias);
+        if (!cancelled && health) setHealthByModel(health);
       } catch {
         // badge state stays empty (unknown) on failure
       }
