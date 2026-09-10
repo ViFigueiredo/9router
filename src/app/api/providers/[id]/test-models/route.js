@@ -64,17 +64,33 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: "No models configured for this provider" }, { status: 400 });
     }
 
+    // One slow/hung model must not fail the whole batch: pingModelByKind throws
+    // on its internal 15s timeout/network errors, so catch per model and turn
+    // the failure into a normal result entry (tag → failing).
+    const safePing = async (modelStr, kind) => {
+      try {
+        return await pingModelByKind(modelStr, kind, baseUrl);
+      } catch (err) {
+        return {
+          ok: false,
+          latencyMs: null,
+          status: null,
+          error: `ping failed: ${String(err?.message || err).slice(0, 240)}`,
+        };
+      }
+    };
+
     // Warm up with first model to trigger token refresh (if needed) before parallel calls.
     // This prevents race condition where multiple requests concurrently refresh the same token.
     const [first, ...rest] = models;
     const firstKind = first.kind || first.type || "llm";
-    const firstResult = await pingModelByKind(`${alias}/${first.id}`, firstKind, baseUrl);
+    const firstResult = await safePing(`${alias}/${first.id}`, firstKind);
     const results = [{ modelId: first.id, name: first.name || first.id, kind: first.kind || first.type || "llm", ...firstResult }];
 
     if (rest.length > 0) {
       const restResults = await Promise.all(
         rest.map(async (model) => {
-          const result = await pingModelByKind(`${alias}/${model.id}`, model.kind || model.type || "llm", baseUrl);
+          const result = await safePing(`${alias}/${model.id}`, model.kind || model.type || "llm");
           return { modelId: model.id, name: model.name || model.id, kind: model.kind || model.type || "llm", ...result };
         })
       );
