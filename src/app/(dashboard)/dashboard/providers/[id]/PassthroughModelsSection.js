@@ -5,6 +5,7 @@ import PropTypes from "prop-types";
 import { Button } from "@/shared/components";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
 import ModelHealthBadge from "@/shared/components/ModelHealthBadge";
+import ComboMembershipChips from "@/shared/components/ComboMembershipChips";
 import ModelListFilterBar from "@/shared/components/ModelListFilterBar";
 import { filterModelRows, HEALTH_FILTER_ALL } from "@/shared/utils/modelHealthFilter";
 
@@ -34,6 +35,7 @@ function PassthroughModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias
         <div className="flex items-center gap-2">
           <p className="text-sm font-medium truncate">{modelId}</p>
           <ModelHealthBadge health={health} />
+          <ComboMembershipChips fullModel={fullModel} />
         </div>
 
         <div className="flex items-center gap-1 mt-1">

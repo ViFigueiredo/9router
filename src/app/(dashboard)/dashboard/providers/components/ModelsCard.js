@@ -7,6 +7,7 @@ import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { getProviderAlias } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import ModelHealthBadge from "@/shared/components/ModelHealthBadge";
+import ComboMembershipChips from "@/shared/components/ComboMembershipChips";
 import ModelListFilterBar from "@/shared/components/ModelListFilterBar";
 import { filterModelRows, HEALTH_FILTER_ALL } from "@/shared/utils/modelHealthFilter";
 
@@ -25,6 +26,7 @@ export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCusto
           <div className="flex items-center gap-2">
             <code className="text-xs text-text-muted font-mono bg-sidebar px-1.5 py-0.5 rounded">{fullModel}</code>
             <ModelHealthBadge health={health} />
+            <ComboMembershipChips fullModel={fullModel} />
           </div>
           {model.name && <span className="text-[9px] text-text-muted/70 italic pl-1">{model.name}</span>}
         </div>
