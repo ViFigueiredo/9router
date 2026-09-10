@@ -20,6 +20,7 @@ export default function ModelHealthBadge({ health }) {
   const notServed = !!health?.notServed;
   const tag = health?.tag || "unknown";
   const s = notServed ? NOT_SERVED_STYLE : (STYLES[tag] || STYLES.unknown);
+  const showMetrics = !notServed && tag !== "failing" && (typeof health?.ttftAvgMs === "number" || typeof health?.tpsAvg === "number");
   const title = notServed
     ? [
       "Upstream says this model id is not served (HTTP 404) — the connection itself is fine",
@@ -35,9 +36,18 @@ export default function ModelHealthBadge({ health }) {
   return (
     <span
       title={title}
-      className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border ${s.cls}`}
+      className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border whitespace-nowrap ${s.cls}`}
     >
-      {s.label}
+      <span>{s.label}</span>
+      {showMetrics ? (
+        <span className="inline-flex items-center gap-1 font-mono font-normal normal-case opacity-80 border-l border-current/25 pl-1">
+          {typeof health?.ttftAvgMs === "number" ? <span>{fmtMs(health.ttftAvgMs)}</span> : null}
+          {typeof health?.ttftAvgMs === "number" && typeof health?.tpsAvg === "number" ? (
+            <span className="opacity-40">·</span>
+          ) : null}
+          {typeof health?.tpsAvg === "number" ? <span>{health.tpsAvg} tok/s</span> : null}
+        </span>
+      ) : null}
     </span>
   );
 }
