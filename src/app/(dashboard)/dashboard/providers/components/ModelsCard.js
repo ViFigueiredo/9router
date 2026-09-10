@@ -7,6 +7,8 @@ import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { getProviderAlias } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import ModelHealthBadge from "@/shared/components/ModelHealthBadge";
+import ModelListFilterBar from "@/shared/components/ModelListFilterBar";
+import { filterModelRows, HEALTH_FILTER_ALL } from "@/shared/utils/modelHealthFilter";
 
 // ── ModelRow ───────────────────────────────────────────────────
 export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting, health }) {
@@ -122,6 +124,8 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
   const [testError, setTestError] = useState("");
   const [showAddCustomModel, setShowAddCustomModel] = useState(false);
   const [healthByModel, setHealthByModel] = useState({});
+  const [filterQuery, setFilterQuery] = useState("");
+  const [filterTag, setFilterTag] = useState(HEALTH_FILTER_ALL);
 
   const providerAlias = providerAliasOverride || getProviderAlias(providerId);
   const effectiveType = kindFilter || "llm";
@@ -231,7 +235,10 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
       && !builtInModels.some((b) => b.id === m.id)
   );
 
-  const displayModels = builtInModels;
+  const displayModels = filterModelRows(builtInModels, { query: filterQuery, tag: filterTag, healthByModel });
+  const visibleCustomModels = filterModelRows(myCustomModels, { query: filterQuery, tag: filterTag, healthByModel });
+  const totalModels = builtInModels.length + myCustomModels.length;
+  const shownModels = displayModels.length + visibleCustomModels.length;
 
   return (
     <>
@@ -240,6 +247,23 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
           <h2 className="text-lg font-semibold">Models{kindFilter ? ` — ${kindFilter.toUpperCase()}` : ""}</h2>
         </div>
         {testError && <p className="text-xs text-red-500 mb-3 break-words">{testError}</p>}
+
+        {totalModels > 0 && (
+          <div className="mb-3">
+            <ModelListFilterBar
+              query={filterQuery}
+              onQueryChange={setFilterQuery}
+              tag={filterTag}
+              onTagChange={setFilterTag}
+              shown={shownModels}
+              total={totalModels}
+            />
+          </div>
+        )}
+
+        {totalModels > 0 && shownModels === 0 && (
+          <p className="text-xs text-text-muted mb-3">No models match this filter.</p>
+        )}
 
         <div className="flex flex-wrap gap-3">
           {displayModels.map((model) => {
@@ -264,7 +288,7 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
             );
           })}
 
-          {myCustomModels.map((model) => (
+          {visibleCustomModels.map((model) => (
             <ModelRow
               key={`${model.id}-${model.type}`}
               model={{ id: model.id, name: model.name }}

@@ -5,6 +5,8 @@ import PropTypes from "prop-types";
 import { Button } from "@/shared/components";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
 import ModelHealthBadge from "@/shared/components/ModelHealthBadge";
+import ModelListFilterBar from "@/shared/components/ModelListFilterBar";
+import { filterModelRows, HEALTH_FILTER_ALL } from "@/shared/utils/modelHealthFilter";
 
 // Single source of the model-health fetch: used by the mount effect below and
 // by refreshHealth() after test/validate actions — never duplicated.
@@ -93,6 +95,8 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
   const [healthByModel, setHealthByModel] = useState({});
   const [validating, setValidating] = useState(false);
   const [validateFeedback, setValidateFeedback] = useState(null); // {type:"error"|"success", text}
+  const [filterQuery, setFilterQuery] = useState("");
+  const [filterTag, setFilterTag] = useState(HEALTH_FILTER_ALL);
 
   const activeConnection = connections.find((conn) => conn.isActive !== false);
 
@@ -180,6 +184,8 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
     providerAlias: providerStorageAlias,
     type: "llm",
   });
+
+  const visibleModels = filterModelRows(allModels, { query: filterQuery, tag: filterTag, healthByModel });
 
   const handleAdd = async () => {
     if (!newModel.trim() || adding) return;
@@ -276,8 +282,23 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
       )}
 
       {allModels.length > 0 && (
+        <ModelListFilterBar
+          query={filterQuery}
+          onQueryChange={setFilterQuery}
+          tag={filterTag}
+          onTagChange={setFilterTag}
+          shown={visibleModels.length}
+          total={allModels.length}
+        />
+      )}
+
+      {allModels.length > 0 && visibleModels.length === 0 && (
+        <p className="text-xs text-text-muted">No models match this filter.</p>
+      )}
+
+      {visibleModels.length > 0 && (
         <div className="flex flex-col gap-3">
-          {allModels.map(({ id, alias, source }) => (
+          {visibleModels.map(({ id, alias, source }) => (
             <CompatibleModelRow
               key={`${source}-${providerStorageAlias}/${id}`}
               modelId={id}

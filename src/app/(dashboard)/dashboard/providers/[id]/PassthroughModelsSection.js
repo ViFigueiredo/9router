@@ -5,6 +5,8 @@ import PropTypes from "prop-types";
 import { Button } from "@/shared/components";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
 import ModelHealthBadge from "@/shared/components/ModelHealthBadge";
+import ModelListFilterBar from "@/shared/components/ModelListFilterBar";
+import { filterModelRows, HEALTH_FILTER_ALL } from "@/shared/utils/modelHealthFilter";
 
 function PassthroughModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting, health }) {
   const borderColor = testStatus === "ok"
@@ -96,6 +98,8 @@ export default function PassthroughModelsSection({ providerAlias, modelAliases, 
   const [newModel, setNewModel] = useState("");
   const [adding, setAdding] = useState(false);
   const [healthByModel, setHealthByModel] = useState({});
+  const [filterQuery, setFilterQuery] = useState("");
+  const [filterTag, setFilterTag] = useState(HEALTH_FILTER_ALL);
 
   useEffect(() => {
     let cancelled = false;
@@ -115,6 +119,8 @@ export default function PassthroughModelsSection({ providerAlias, modelAliases, 
     providerAlias,
     type: "llm",
   });
+
+  const visibleModels = filterModelRows(allModels, { query: filterQuery, tag: filterTag, healthByModel });
 
   const handleAdd = async () => {
     if (!newModel.trim() || adding) return;
@@ -163,8 +169,23 @@ export default function PassthroughModelsSection({ providerAlias, modelAliases, 
 
       {/* Models list */}
       {allModels.length > 0 && (
+        <ModelListFilterBar
+          query={filterQuery}
+          onQueryChange={setFilterQuery}
+          tag={filterTag}
+          onTagChange={setFilterTag}
+          shown={visibleModels.length}
+          total={allModels.length}
+        />
+      )}
+
+      {allModels.length > 0 && visibleModels.length === 0 && (
+        <p className="text-xs text-text-muted">No models match this filter.</p>
+      )}
+
+      {visibleModels.length > 0 && (
         <div className="flex flex-col gap-3">
-          {allModels.map(({ id, fullModel, alias, source }) => (
+          {visibleModels.map(({ id, fullModel, alias, source }) => (
             <PassthroughModelRow
               key={`${source}-${fullModel}`}
               modelId={id}
