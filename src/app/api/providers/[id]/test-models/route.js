@@ -120,6 +120,7 @@ export async function POST(request, { params }) {
           status: r.status ?? null,
           ttftMs: typeof r.latencyMs === "number" ? r.latencyMs : null,
           isPing: true,
+          errorText: r.error || "",
           ...(r.inconclusive ? { fatalOverride: false } : {}),
         });
       }

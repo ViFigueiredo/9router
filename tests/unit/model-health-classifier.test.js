@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  HEALTH_TAGS, isFatalEvent, pruneEvents, providerP50, classify,
+  HEALTH_TAGS, isFatalEvent, isModelNotServed, pruneEvents, providerP50, classify,
 } from "@/lib/modelHealth/classifier.js";
 
 const NOW = 1_000_000_000_000;
@@ -22,6 +22,21 @@ describe("isFatalEvent", () => {
   });
   it("successes are never fatal", () => {
     expect(isFatalEvent({ ok: true, status: 200 })).toBe(false);
+  });
+});
+
+describe("isModelNotServed", () => {
+  it("detects provider 404 model-not-found envelopes", () => {
+    expect(isModelNotServed({ status: 404, message: '[404]: {"error":{"message":"model is not found","type":"not_found_error","param":"","code":"5"}}' })).toBe(true);
+    expect(isModelNotServed({ status: 404, message: "Model am/minimax-m3 was retired by its provider on 2026-09-09 and is no longer served." })).toBe(true);
+    expect(isModelNotServed({ status: 404, message: "code=model_not_found" })).toBe(true);
+  });
+
+  it("does not fire for other statuses or unrelated messages", () => {
+    expect(isModelNotServed({ status: 500, message: "model is not found" })).toBe(false);
+    expect(isModelNotServed({ status: 404, message: "route not found" })).toBe(false);
+    expect(isModelNotServed({ status: null, message: "" })).toBe(false);
+    expect(isModelNotServed({})).toBe(false);
   });
 });
 

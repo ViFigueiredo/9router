@@ -19,6 +19,7 @@ export async function POST(request) {
       status: result.status ?? null,
       ttftMs: typeof result.latencyMs === "number" ? result.latencyMs : null,
       isPing: true,
+      errorText: result.error || "",
       ...(inconclusive ? { fatalOverride: false } : {}),
     });
     if (result.ok) result.tag = "ok";

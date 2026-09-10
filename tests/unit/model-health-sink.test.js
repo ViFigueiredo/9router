@@ -80,4 +80,27 @@ describe("modelHealth sink", () => {
     await expect(sink.recordObservation({ provider: "", model: "", ok: true })).resolves.toBeUndefined();
     await expect(sink.getHealthSnapshot(null)).resolves.toEqual({});
   });
+
+  it("marks a provider 404 model-not-found as notServed and clears it after a success", async () => {
+    await sink.recordObservation({
+      provider: "hcnsec", model: "sensenova-u1.5-lite", ok: false, status: 404, isPing: true,
+      errorText: '[404]: {"error":{"message":"model is not found","type":"not_found_error","param":"","code":"5"}}',
+    });
+    let snap = await sink.getHealthSnapshot("hcnsec");
+    expect(snap["sensenova-u1.5-lite"].notServed).toBe(true);
+    expect(snap["sensenova-u1.5-lite"].lastErrorStatus).toBe(404);
+    expect(String(snap["sensenova-u1.5-lite"].lastErrorMessage)).toContain("model is not found");
+
+    await sink.recordObservation({ provider: "hcnsec", model: "sensenova-u1.5-lite", ok: true, status: 200, isPing: true, ttftMs: 900 });
+    snap = await sink.getHealthSnapshot("hcnsec");
+    expect(snap["sensenova-u1.5-lite"].notServed).toBe(false);
+    expect(snap["sensenova-u1.5-lite"].lastErrorMessage).toBeNull();
+  });
+
+  it("keeps a 500 failure as failing without a notServed warning", async () => {
+    await sink.recordObservation({ provider: "hcnsec", model: "step-explore", ok: false, status: 503, isPing: true, errorText: "HTTP 503: upstream down" });
+    const snap = await sink.getHealthSnapshot("hcnsec");
+    expect(snap["step-explore"].notServed).toBe(false);
+    expect(snap["step-explore"].tag).toBe(classifier.HEALTH_TAGS.FAILING);
+  });
 });

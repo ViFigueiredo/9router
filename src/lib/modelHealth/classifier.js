@@ -28,6 +28,26 @@ export function isFatalEvent({ ok, status }) {
   return false;
 }
 
+// Upstream says the model id is not served (retired / unknown to the provider).
+// Used to surface an explicit "not served" warning in the UI instead of a bare
+// failing badge: the connection is fine, the model id is not.
+const MODEL_NOT_SERVED_PATTERNS = [
+  "model is not found",
+  "model_not_found",
+  "not_found_error",
+  "was retired",
+  "no longer served",
+  "does not exist",
+  "model not found",
+];
+
+export function isModelNotServed({ status, message } = {}) {
+  if (Number(status) !== 404) return false;
+  const text = typeof message === "string" ? message.toLowerCase() : "";
+  if (!text) return false;
+  return MODEL_NOT_SERVED_PATTERNS.some((p) => text.includes(p));
+}
+
 export function pruneEvents(events, now, windowMs = HEALTH_THRESHOLDS.windowMs) {
   if (!Array.isArray(events) || events.length === 0) return [];
   const cutoff = now - windowMs;
