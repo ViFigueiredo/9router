@@ -42,10 +42,13 @@ const MODEL_NOT_SERVED_PATTERNS = [
 ];
 
 export function isModelNotServed({ status, message } = {}) {
-  if (Number(status) !== 404) return false;
   const text = typeof message === "string" ? message.toLowerCase() : "";
   if (!text) return false;
-  return MODEL_NOT_SERVED_PATTERNS.some((p) => text.includes(p));
+  if (!MODEL_NOT_SERVED_PATTERNS.some((p) => text.includes(p))) return false;
+  if (Number(status) === 404) return true;
+  // The gateway can wrap the provider's 404 in its own 503 (model/account lock)
+  // while embedding the upstream envelope — accept an embedded 404 marker.
+  return /\[404\]|"status":\s*404|\b404\b/.test(text);
 }
 
 export function pruneEvents(events, now, windowMs = HEALTH_THRESHOLDS.windowMs) {

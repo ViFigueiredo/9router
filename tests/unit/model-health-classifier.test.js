@@ -32,6 +32,13 @@ describe("isModelNotServed", () => {
     expect(isModelNotServed({ status: 404, message: "code=model_not_found" })).toBe(true);
   });
 
+  it("detects a provider 404 wrapped in the gateway's own 503 envelope", () => {
+    expect(isModelNotServed({
+      status: 503,
+      message: 'HTTP 503: [openai-compatible-chat-31ec5b93-ca88-41f6-9058-7d0a36d2d123/sensenova-u1.5-lite] [404]: {"error":{"message":"model is not found","type":"not_found_error","param":"","code":"5"}}',
+    })).toBe(true);
+  });
+
   it("does not fire for other statuses or unrelated messages", () => {
     expect(isModelNotServed({ status: 500, message: "model is not found" })).toBe(false);
     expect(isModelNotServed({ status: 404, message: "route not found" })).toBe(false);
