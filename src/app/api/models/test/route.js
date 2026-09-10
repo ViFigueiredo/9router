@@ -10,6 +10,7 @@ export async function POST(request) {
     if (!model) return NextResponse.json({ error: "Model required" }, { status: 400 });
     const result = await pingModelByKind(model, kind || "llm");
     const info = await getModelInfo(model).catch(() => null);
+    const inconclusive = !result.ok && /timeout|aborted/i.test(String(result.error || ""));
     await recordObservation({
       provider: info?.provider || "unknown",
       model: info?.model || model,
@@ -18,6 +19,7 @@ export async function POST(request) {
       status: result.status ?? null,
       ttftMs: typeof result.latencyMs === "number" ? result.latencyMs : null,
       isPing: true,
+      ...(inconclusive ? { fatalOverride: false } : {}),
     });
     if (result.ok) result.tag = "ok";
     return NextResponse.json(result);
