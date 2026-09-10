@@ -92,6 +92,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
   const [modelTestResults, setModelTestResults] = useState({});
   const [healthByModel, setHealthByModel] = useState({});
   const [validating, setValidating] = useState(false);
+  const [validateFeedback, setValidateFeedback] = useState(null); // {type:"error"|"success", text}
 
   const activeConnection = connections.find((conn) => conn.isActive !== false);
 
@@ -139,14 +140,34 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
   const handleValidateAll = async () => {
     if (validating || !activeConnection) return;
     setValidating(true);
+    setValidateFeedback(null);
     try {
       const res = await fetch(`/api/providers/${activeConnection.id}/test-models`, { method: "POST" });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setValidateFeedback({
+          type: "error",
+          text: data?.error || `Validate all failed (HTTP ${res.status}). Check the connection and try again.`,
+        });
+        return;
+      }
+      const results = data.results || [];
       const okMap = {};
-      for (const r of data.results || []) okMap[r.modelId] = r.ok ? "ok" : "error";
+      let okCount = 0;
+      for (const r of results) {
+        okMap[r.modelId] = r.ok ? "ok" : "error";
+        if (r.ok) okCount += 1;
+      }
       setModelTestResults(okMap);
-    } catch {
-      // ignore — health refresh below still runs
+      const failedCount = results.length - okCount;
+      setValidateFeedback({
+        type: "success",
+        text: results.length === 0
+          ? "No models to validate for this connection."
+          : `Validated ${results.length} model${results.length === 1 ? "" : "s"} — ${okCount} ok, ${failedCount} failed.`,
+      });
+    } catch (e) {
+      setValidateFeedback({ type: "error", text: `Validate all failed: ${e?.message || "network error"}` });
     } finally {
       setValidating(false);
       refreshHealth();
@@ -245,6 +266,12 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
       {!canImport && (
         <p className="text-xs text-text-muted">
           Add a connection to enable importing and validating models.
+        </p>
+      )}
+
+      {validateFeedback && (
+        <p className={`text-xs ${validateFeedback.type === "error" ? "text-red-500" : "text-green-500"}`} role="status">
+          {validateFeedback.text}
         </p>
       )}
 
