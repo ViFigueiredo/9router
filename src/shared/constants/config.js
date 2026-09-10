@@ -92,6 +92,16 @@ export const QUOTA_AUTOPING_CONFIG = {
   },
 };
 
+// Provider model batch testing (validate-all / test-all-models).
+// Bounded parallelism matters: firing every model at once saturates a slow
+// upstream and makes the batch itself time out (individual pings pass while the
+// batch reports failures). The longer ping timeout tolerates models slower than
+// the single-test default.
+export const MODEL_TEST_BATCH = {
+  concurrency: 3,
+  pingTimeoutMs: 30_000,
+};
+
 // Re-export from providers.js for backward compatibility
 export {
   FREE_PROVIDERS,

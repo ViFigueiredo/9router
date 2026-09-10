@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getProviderConnectionById, getCustomModels } from "@/lib/localDb";
 import { getProviderModels, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
-import { UPDATER_CONFIG } from "@/shared/constants/config";
+import { UPDATER_CONFIG, MODEL_TEST_BATCH } from "@/shared/constants/config";
+import { mapWithConcurrency } from "@/shared/utils/mapWithConcurrency";
 import { pingModelByKind } from "@/app/api/models/test/ping";
 import { recordObservation, getHealthSnapshot } from "@/lib/modelHealth/sink.js";
 import { getModelInfo } from "@/sse/services/model.js";
@@ -65,11 +66,11 @@ export async function POST(request, { params }) {
     }
 
     // One slow/hung model must not fail the whole batch: pingModelByKind throws
-    // on its internal 15s timeout/network errors, so catch per model and turn
+    // on its internal timeout/network errors, so catch per model and turn
     // the failure into a normal result entry (tag → failing).
     const safePing = async (modelStr, kind) => {
       try {
-        return await pingModelByKind(modelStr, kind, baseUrl);
+        return await pingModelByKind(modelStr, kind, baseUrl, MODEL_TEST_BATCH.pingTimeoutMs);
       } catch (err) {
         return {
           ok: false,
@@ -80,20 +81,21 @@ export async function POST(request, { params }) {
       }
     };
 
-    // Warm up with first model to trigger token refresh (if needed) before parallel calls.
-    // This prevents race condition where multiple requests concurrently refresh the same token.
+    // Warm up with first model to trigger token refresh (if needed) before the
+    // fan-out. This prevents multiple requests concurrently refreshing the same
+    // token, and keeps the first upstream hit serial.
     const [first, ...rest] = models;
     const firstKind = first.kind || first.type || "llm";
     const firstResult = await safePing(`${alias}/${first.id}`, firstKind);
     const results = [{ modelId: first.id, name: first.name || first.id, kind: first.kind || first.type || "llm", ...firstResult }];
 
     if (rest.length > 0) {
-      const restResults = await Promise.all(
-        rest.map(async (model) => {
-          const result = await safePing(`${alias}/${model.id}`, model.kind || model.type || "llm");
-          return { modelId: model.id, name: model.name || model.id, kind: model.kind || model.type || "llm", ...result };
-        })
-      );
+      // Bounded concurrency: an unbounded Promise.all saturates slow upstreams
+      // and the batch then times out on models that pass when tested alone.
+      const restResults = await mapWithConcurrency(rest, MODEL_TEST_BATCH.concurrency, async (model) => {
+        const result = await safePing(`${alias}/${model.id}`, model.kind || model.type || "llm");
+        return { modelId: model.id, name: model.name || model.id, kind: model.kind || model.type || "llm", ...result };
+      });
       results.push(...restResults);
     }
 
