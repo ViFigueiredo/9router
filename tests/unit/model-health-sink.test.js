@@ -103,4 +103,22 @@ describe("modelHealth sink", () => {
     expect(snap["step-explore"].notServed).toBe(false);
     expect(snap["step-explore"].tag).toBe(classifier.HEALTH_TAGS.FAILING);
   });
+
+  it("aggregates positive tps into tpsAvg and ignores non-positive or missing tps", async () => {
+    await sink.recordObservation({ provider: "tpsprov", model: "m1", ok: true, status: 200, ttftMs: 200, tps: 50 });
+    await sink.recordObservation({ provider: "tpsprov", model: "m1", ok: true, status: 200, ttftMs: 300, tps: 70 });
+    await sink.recordObservation({ provider: "tpsprov", model: "m1", ok: true, status: 200, ttftMs: 250, tps: null });
+    await sink.recordObservation({ provider: "tpsprov", model: "m1", ok: true, status: 200, ttftMs: 250, tps: 0 });
+
+    const snap = await sink.getHealthSnapshot("tpsprov");
+    expect(snap["m1"].tpsAvg).toBe(60); // (50 + 70) / 2 = 60
+    expect(snap["m1"].ttftAvgMs).toBe(250); // (200 + 300 + 250 + 250) / 4 = 250
+  });
+
+  it("returns null tpsAvg when no observations have valid tps", async () => {
+    await sink.recordObservation({ provider: "tpsprov", model: "m2", ok: true, status: 200, ttftMs: 150 });
+    const snap = await sink.getHealthSnapshot("tpsprov");
+    expect(snap["m2"].tpsAvg).toBeNull();
+    expect(snap["m2"].ttftAvgMs).toBe(150);
+  });
 });
