@@ -1,7 +1,19 @@
-# Unreleased
+# v0.5.70 (2026-09-10)
 
 ## Features
-- feat(model-health): tag provider models ok/slow/failing from pings + 1h traffic telemetry (auto-calibrated per provider) and deprioritize tagged models to the tail of combo sequences
+- **Model Health**: per-model health badges (ok/slow/failing) from ping probes and 1h traffic telemetry, auto-calibrated per provider; unhealthy models deprioritized to the tail of combo sequences
+- **Model Health**: tokens-per-second signal in probes and real generation TPS from streaming completions (post-TTFT window), with avg latency and tok/s shown on the health badge
+- **Model Health**: explicit "not served by upstream" warning for provider 404s, even when wrapped in gateway 503 envelopes
+- **Dashboard**: search + health-tag filter in provider model lists; test-all-models button with bounded batch concurrency
+- **Dashboard**: combo membership chips in provider model lists
+- **Dashboard**: multiselect models with bulk test, remove, and add-to-existing-combo actions
+
+## Fixes
+- **Model Health**: account-level failures (401/403/429) no longer tag models failing; batch ping timeouts are inconclusive instead of fatal
+- **ChatCore**: report generation TPS on non-streaming and forced SSE→JSON paths
+
+# Unreleased
+
 
 # v0.5.69 (2026-09-05)
 
