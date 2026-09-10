@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getProviderConnectionById } from "@/lib/localDb";
+import { getProviderConnectionById, getCustomModels } from "@/lib/localDb";
 import { getProviderModels, PROVIDER_ID_TO_ALIAS } from "open-sse/config/providerModels.js";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { UPDATER_CONFIG } from "@/shared/constants/config";
@@ -24,19 +24,40 @@ export async function POST(request, { params }) {
     const isCompatible = isOpenAICompatibleProvider(providerId) || isAnthropicCompatibleProvider(providerId);
     const alias = PROVIDER_ID_TO_ALIAS[providerId] || providerId;
 
-    let models = getProviderModels(alias);
-
     const baseUrl = `http://127.0.0.1:${process.env.PORT || UPDATER_CONFIG.appPort}`;
+    const seenIds = new Set();
 
-    // Compatible providers: fetch live model list
-    if (isCompatible && models.length === 0) {
+    // Compatible providers: built-in registry models first, then live /models,
+    // then the custom models the provider page lists (keyed by the provider id).
+    // Registry/live lists may be empty for user-defined compatible nodes — the
+    // page's rows are what the user actually sees, so they must be validated too.
+    const pushModel = (m) => {
+      const modelId = m.id || m.name || m.model;
+      if (!modelId || seenIds.has(modelId)) return;
+      seenIds.add(modelId);
+      models.push({ id: modelId, name: m.name || modelId, kind: m.kind || m.type || "llm" });
+    };
+
+    let models = [];
+    if (isCompatible) {
+      for (const m of getProviderModels(alias)) pushModel(m);
       try {
         const modelsRes = await fetch(`${baseUrl}/api/providers/${id}/models`);
         if (modelsRes.ok) {
           const data = await modelsRes.json();
-          models = (data.models || []).map((m) => ({ id: m.id || m.name, name: m.name || m.id }));
+          for (const m of data.models || []) pushModel(m);
         }
-      } catch { /* fallback to empty */ }
+      } catch { /* fallback to registry/custom */ }
+      try {
+        const custom = await getCustomModels();
+        for (const m of custom) {
+          if (m.providerAlias !== providerId) continue;
+          if ((m.kind || m.type || "llm") !== "llm") continue;
+          pushModel(m);
+        }
+      } catch { /* fallback to registry/live */ }
+    } else {
+      for (const m of getProviderModels(alias)) pushModel(m);
     }
 
     if (models.length === 0) {
