@@ -490,7 +490,20 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Provider forced streaming but client wants JSON
   if (!clientRequestedStreaming && providerRequiresStreaming) {
     const result = await handleForcedSSEToJson({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, customToolNames, trackDone, appendLog });
-    if (result) { streamController.handleComplete(); return result; }
+    if (result) {
+      streamController.handleComplete();
+      if (result.success === false) {
+        fireObservation({ ok: false, status: result.status || 502, errorText: String(result.error || "invalid upstream response") });
+      } else {
+        const completionTokens = result?.usage?.completion_tokens ?? result?.usage?.output_tokens;
+        const totalMs = Date.now() - requestStartTime;
+        const tps = (typeof completionTokens === "number" && completionTokens > 0 && totalMs > 0)
+          ? Math.round((completionTokens * 1000) / totalMs)
+          : null;
+        fireObservation({ ok: true, status: 200, ttftMs: null, tps });
+      }
+      return result;
+    }
   }
 
   // True non-streaming response
@@ -503,7 +516,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     if (result && result.success === false) {
       fireObservation({ ok: false, status: result.status || 502, errorText: String(result.error || "invalid upstream response") });
     } else {
-      fireObservation({ ok: true, status: 200, ttftMs: null });
+      const completionTokens = result?.usage?.completion_tokens ?? result?.usage?.output_tokens;
+      const totalMs = Date.now() - requestStartTime;
+      const tps = (typeof completionTokens === "number" && completionTokens > 0 && totalMs > 0)
+        ? Math.round((completionTokens * 1000) / totalMs)
+        : null;
+      fireObservation({ ok: true, status: 200, ttftMs: null, tps });
     }
     return result;
   }
