@@ -72,11 +72,15 @@ export async function POST(request, { params }) {
       try {
         return await pingModelByKind(modelStr, kind, baseUrl, MODEL_TEST_BATCH.pingTimeoutMs);
       } catch (err) {
+        const message = String(err?.message || err);
         return {
           ok: false,
           latencyMs: null,
           status: null,
-          error: `ping failed: ${String(err?.message || err).slice(0, 240)}`,
+          // A probe timeout under batch load is not evidence the model is broken
+          // (it often passes when tested alone); record it without health impact.
+          inconclusive: /timeout|aborted/i.test(message),
+          error: `ping failed: ${message.slice(0, 240)}`,
         };
       }
     };
@@ -116,6 +120,7 @@ export async function POST(request, { params }) {
           status: r.status ?? null,
           ttftMs: typeof r.latencyMs === "number" ? r.latencyMs : null,
           isPing: true,
+          ...(r.inconclusive ? { fatalOverride: false } : {}),
         });
       }
       // Snapshot under every provider we recorded under (alias→id resolution can

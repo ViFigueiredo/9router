@@ -98,7 +98,7 @@ export const QUOTA_AUTOPING_CONFIG = {
 // batch reports failures). The longer ping timeout tolerates models slower than
 // the single-test default.
 export const MODEL_TEST_BATCH = {
-  concurrency: 3,
+  concurrency: 2,
   pingTimeoutMs: 30_000,
 };
 

@@ -75,4 +75,24 @@ describe("classify", () => {
     expect(classify({ events: [], lastPing: null, providerP50Ms: null, now: NOW }).tag)
       .toBe(HEALTH_TAGS.UNKNOWN);
   });
+
+  it("recovers from failing when a success is newer than the fatal errors", () => {
+    const events = [
+      ev(NOW - 3000, false, null, true),
+      ev(NOW - 2000, false, null, true),
+      ev(NOW - 1000, true, 500, false),
+    ];
+    expect(classify({ events, lastPing: null, providerP50Ms: 500, now: NOW }).tag)
+      .toBe(HEALTH_TAGS.OK);
+  });
+
+  it("stays failing when the fatal errors are newer than the last success", () => {
+    const events = [
+      ev(NOW - 2000, true, 500, false),
+      ev(NOW - 1000, false, null, true),
+      ev(NOW - 500, false, null, true),
+    ];
+    expect(classify({ events, lastPing: null, providerP50Ms: 500, now: NOW }).tag)
+      .toBe(HEALTH_TAGS.FAILING);
+  });
 });

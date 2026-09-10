@@ -12,11 +12,13 @@ function nowMs() {
   return Date.now();
 }
 
-export async function recordObservation({ provider, model, kind = "llm", ok, status = null, ttftMs = null, totalMs = null, isPing = false }) {
+export async function recordObservation({ provider, model, kind = "llm", ok, status = null, ttftMs = null, totalMs = null, isPing = false, fatalOverride = undefined }) {
   try {
     if (!provider || !model) return;
     const ts = nowMs();
-    const fatal = isFatalEvent({ ok, status });
+    // fatalOverride lets a probe report an inconclusive outcome (e.g. the batch
+    // ping hit its own timeout under load) without poisoning the model's tag.
+    const fatal = typeof fatalOverride === "boolean" ? fatalOverride : isFatalEvent({ ok, status });
     const pingTtft = isPing ? (ttftMs ?? totalMs ?? null) : ttftMs;
 
     await updateModelHealth(provider, model, (prev) => {

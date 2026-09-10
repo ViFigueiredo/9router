@@ -71,11 +71,21 @@ export function classifyModel(providerMap, modelId, kind, now, thresholds = HEAL
 
 export function classify({ events, lastPing, providerP50Ms, now, thresholds = HEALTH_THRESHOLDS }) {
   const win = pruneEvents(events || [], now, thresholds.windowMs);
-  const fatalCount = win.filter((e) => e.fatal).length;
+  const fatalEvents = win.filter((e) => e.fatal);
+  const fatalCount = fatalEvents.length;
 
   const pingFresh = lastPing && typeof lastPing.at === "number" && lastPing.at >= now - thresholds.windowMs;
 
-  if (fatalCount >= thresholds.fatalThreshold || (pingFresh && !lastPing.ok)) {
+  // `failing` describes "currently broken": a success observed AFTER the last
+  // fatal error clears it, so a re-validation that passes recovers the tag
+  // instead of showing stale failures for the rest of the 1h window.
+  const lastFatalTs = fatalCount > 0 ? Math.max(...fatalEvents.map((e) => e.ts)) : null;
+  const okEvents = win.filter((e) => e.ok);
+  const lastOkTs = okEvents.length > 0 ? Math.max(...okEvents.map((e) => e.ts)) : null;
+  const stillBroken = fatalCount >= thresholds.fatalThreshold
+    && (lastOkTs === null || lastOkTs < lastFatalTs);
+
+  if (stillBroken || (pingFresh && !lastPing.ok)) {
     return { tag: HEALTH_TAGS.FAILING, reason: `${fatalCount} fatal error(s) in window` };
   }
 
