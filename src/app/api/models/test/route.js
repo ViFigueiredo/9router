@@ -18,6 +18,7 @@ export async function POST(request) {
       ok: !!result.ok,
       status: result.status ?? null,
       ttftMs: typeof result.latencyMs === "number" ? result.latencyMs : null,
+      tps: typeof result.tps === "number" ? result.tps : null,
       isPing: true,
       errorText: result.error || "",
       ...(inconclusive ? { fatalOverride: false } : {}),

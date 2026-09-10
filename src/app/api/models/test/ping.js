@@ -206,5 +206,16 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
     };
   }
 
-  return { ok: true, latencyMs, error: null, status: res.status };
+  // Throughput signal for the model-health UI: completion tokens over the
+  // round-trip time (approximation of tokens-per-second, non-streamed).
+  const completionTokens = parsed?.usage?.completion_tokens
+    ?? parsed?.usage?.output_tokens
+    ?? firstChoice.message?.usage?.completion_tokens;
+  const completionChars = String(firstChoice.message?.content || "").length;
+  const approxTokens = typeof completionTokens === "number"
+    ? completionTokens
+    : (completionChars > 0 ? Math.ceil(completionChars / 4) : null);
+  const tps = approxTokens && latencyMs > 0 ? Math.round((approxTokens * 1000) / latencyMs) : null;
+
+  return { ok: true, latencyMs, error: null, status: res.status, tokens: approxTokens, tps };
 }

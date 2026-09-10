@@ -27,7 +27,8 @@ export default function ModelHealthBadge({ health }) {
     ].filter(Boolean).join(" · ")
     : [
       health?.tag ? `tag: ${health.tag}` : "untested",
-      health?.ttftAvgMs ? `avg ttft ${fmtMs(health.ttftAvgMs)}` : "",
+      health?.ttftAvgMs ? `avg latency ${fmtMs(health.ttftAvgMs)}` : "",
+      health?.tpsAvg ? `avg ${health.tpsAvg} tok/s` : "",
       health?.updatedAt ? `updated ${new Date(health.updatedAt).toLocaleTimeString()}` : "",
       health?.lastErrorMessage ? `last error: ${String(health.lastErrorMessage).slice(0, 120)}` : "",
     ].filter(Boolean).join(" · ");
@@ -45,6 +46,7 @@ ModelHealthBadge.propTypes = {
   health: PropTypes.shape({
     tag: PropTypes.string,
     ttftAvgMs: PropTypes.number,
+    tpsAvg: PropTypes.number,
     updatedAt: PropTypes.number,
     notServed: PropTypes.bool,
     lastErrorMessage: PropTypes.string,

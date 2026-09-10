@@ -12,7 +12,7 @@ function nowMs() {
   return Date.now();
 }
 
-export async function recordObservation({ provider, model, kind = "llm", ok, status = null, errorText = "", ttftMs = null, totalMs = null, isPing = false, fatalOverride = undefined }) {
+export async function recordObservation({ provider, model, kind = "llm", ok, status = null, errorText = "", ttftMs = null, totalMs = null, tps = null, isPing = false, fatalOverride = undefined }) {
   try {
     if (!provider || !model) return;
     const ts = nowMs();
@@ -29,7 +29,7 @@ export async function recordObservation({ provider, model, kind = "llm", ok, sta
       // request concerns — recording them consumes maxEvents slots and their
       // mere presence would classify a lone 429/401 as "ok" window activity.
       if (ok || fatal) {
-        events.push({ ts, ok: !!ok, ttftMs: pingTtft ?? ttftMs, fatal });
+        events.push({ ts, ok: !!ok, ttftMs: pingTtft ?? ttftMs, tps: ok ? tps : null, fatal });
       }
       // Persist lastPing only for pings whose outcome is meaningful for model
       // health: success (ok) or a model-fatal failure. Account-level failures
@@ -77,6 +77,7 @@ export async function getHealthSnapshot(provider) {
     for (const [modelId, mh] of Object.entries(map)) {
       const events = pruneEvents(mh.events || [], ts, HEALTH_THRESHOLDS.windowMs);
       const ttftSamples = events.filter((e) => e.ok && typeof e.ttftMs === "number");
+      const tpsSamples = events.filter((e) => e.ok && typeof e.tps === "number" && e.tps > 0);
       const { tag } = classifyModel(map, modelId, mh.kind, ts);
       const lastError = mh.lastError || null;
       out[modelId] = {
@@ -84,6 +85,9 @@ export async function getHealthSnapshot(provider) {
         kind: mh.kind,
         ttftAvgMs: ttftSamples.length > 0
           ? Math.round(ttftSamples.reduce((s, e) => s + e.ttftMs, 0) / ttftSamples.length)
+          : null,
+        tpsAvg: tpsSamples.length > 0
+          ? Math.round(tpsSamples.reduce((s, e) => s + e.tps, 0) / tpsSamples.length)
           : null,
         totalEvents: events.length,
         fatalEvents: events.filter((e) => e.fatal).length,

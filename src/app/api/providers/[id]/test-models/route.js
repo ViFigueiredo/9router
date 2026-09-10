@@ -119,6 +119,7 @@ export async function POST(request, { params }) {
           ok: !!r.ok,
           status: r.status ?? null,
           ttftMs: typeof r.latencyMs === "number" ? r.latencyMs : null,
+          tps: typeof r.tps === "number" ? r.tps : null,
           isPing: true,
           errorText: r.error || "",
           ...(r.inconclusive ? { fatalOverride: false } : {}),
