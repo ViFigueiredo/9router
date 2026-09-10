@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import PropTypes from "prop-types";
 import Link from "next/link";
 
 // Maps combo model strings → combo names, from GET /api/combos.
