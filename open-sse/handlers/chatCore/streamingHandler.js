@@ -119,7 +119,14 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
       ttft: ttftAt ? ttftAt - requestStartTime : Date.now() - requestStartTime,
       total: Date.now() - requestStartTime
     };
-    try { onModelObservation?.({ provider, model, kind: "llm", ok: true, status: 200, ttftMs: latency.ttft, totalMs: latency.total }); } catch {}
+    // Real generation throughput: completion tokens emitted AFTER the first
+    // token (generation-only window), unlike probe TPS which mixes prefill in.
+    const completionTokens = usage?.completion_tokens ?? usage?.output_tokens;
+    const genMs = latency.total - latency.ttft;
+    const genTps = (typeof completionTokens === "number" && completionTokens > 0 && genMs > 0)
+      ? Math.round((completionTokens * 1000) / genMs)
+      : null;
+    try { onModelObservation?.({ provider, model, kind: "llm", ok: true, status: 200, ttftMs: latency.ttft, totalMs: latency.total, tps: genTps }); } catch {}
     const safeContent = contentObj?.content || "[Empty streaming response]";
     const safeThinking = contentObj?.thinking || null;
 
