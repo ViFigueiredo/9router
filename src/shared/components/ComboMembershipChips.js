@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import PropTypes from "prop-types";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 
 // Maps combo model strings → combo names, from GET /api/combos.
@@ -10,9 +9,9 @@ import Link from "next/link";
 export function useComboMembership(fullModel) {
   const [combos, setCombos] = useState(null);
 
-  useState(() => {
+  useEffect(() => {
     let cancelled = false;
-    (async () => {
+    const load = async () => {
       try {
         const res = await fetch("/api/combos");
         const data = await res.json();
@@ -25,9 +24,15 @@ export function useComboMembership(fullModel) {
       } catch {
         if (!cancelled) setCombos([]);
       }
-    })();
-    return () => { cancelled = true; };
-  });
+    };
+    load();
+    const handleChanged = () => load();
+    window.addEventListener("combosChanged", handleChanged);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("combosChanged", handleChanged);
+    };
+  }, [fullModel]);
 
   return combos;
 }

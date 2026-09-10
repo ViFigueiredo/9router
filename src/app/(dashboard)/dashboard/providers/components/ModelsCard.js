@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import PropTypes from "prop-types";
-import { Card, Button, Modal } from "@/shared/components";
+import { Card, Button, Modal, ConfirmModal, AddToComboModal, ModelListBulkActionsBar } from "@/shared/components";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { getProviderAlias } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
@@ -12,13 +12,26 @@ import ModelListFilterBar from "@/shared/components/ModelListFilterBar";
 import { filterModelRows, HEALTH_FILTER_ALL } from "@/shared/utils/modelHealthFilter";
 
 // ── ModelRow ───────────────────────────────────────────────────
-export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting, health }) {
-  const borderColor = testStatus === "ok" ? "border-green-500/40" : testStatus === "error" ? "border-red-500/40" : "border-border";
+export function ModelRow({ model, fullModel, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting, health, isSelected, onToggleSelect }) {
+  const borderColor = isSelected
+    ? "border-primary/60 bg-primary/5"
+    : testStatus === "ok"
+    ? "border-green-500/40"
+    : testStatus === "error"
+    ? "border-red-500/40"
+    : "border-border";
   const iconColor = testStatus === "ok" ? "#22c55e" : testStatus === "error" ? "#ef4444" : undefined;
 
   return (
-    <div className={`group px-3 py-2 rounded-lg border ${borderColor} hover:bg-sidebar/50`}>
+    <div className={`group px-3 py-2 rounded-lg border ${borderColor} hover:bg-sidebar/50 transition-colors`}>
       <div className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={!!isSelected}
+          onChange={onToggleSelect}
+          aria-label={`Select model ${model.id}`}
+          className="rounded border-border text-primary focus:ring-primary h-4 w-4 cursor-pointer shrink-0"
+        />
         <span className="material-symbols-outlined text-base" style={iconColor ? { color: iconColor } : undefined}>
           {testStatus === "ok" ? "check_circle" : testStatus === "error" ? "cancel" : "smart_toy"}
         </span>
@@ -128,11 +141,15 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
   const [healthByModel, setHealthByModel] = useState({});
   const [filterQuery, setFilterQuery] = useState("");
   const [filterTag, setFilterTag] = useState(HEALTH_FILTER_ALL);
-
+  const [selectedModelIds, setSelectedModelIds] = useState(() => new Set());
+  const [showAddToCombo, setShowAddToCombo] = useState(false);
+  const [showConfirmDelete, setShowConfirmDelete] = useState(false);
+  const [bulkTesting, setBulkTesting] = useState(false);
+  const [feedback, setFeedback] = useState(null);
   const providerAlias = providerAliasOverride || getProviderAlias(providerId);
   const effectiveType = kindFilter || "llm";
 
-  const fetchData = useCallback(async () => {
+  const fetchData = async () => {
     try {
       const [aliasRes, customRes] = await Promise.all([
         fetch("/api/models/alias"),
@@ -143,10 +160,26 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
       if (aliasRes.ok) setModelAliases(aliasData.aliases || {});
       if (customRes.ok) setCustomModels(customData.models || []);
     } catch (e) { console.log("ModelsCard fetch error:", e); }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [aliasRes, customRes] = await Promise.all([
+          fetch("/api/models/alias"),
+          fetch("/api/models/custom", { cache: "no-store" }),
+        ]);
+        const aliasData = await aliasRes.json();
+        const customData = await customRes.json();
+        if (!cancelled) {
+          if (aliasRes.ok) setModelAliases(aliasData.aliases || {});
+          if (customRes.ok) setCustomModels(customData.models || []);
+        }
+      } catch (e) { console.log("ModelsCard fetch error:", e); }
+    })();
+    return () => { cancelled = true; };
   }, []);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
-
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -250,8 +283,14 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
         </div>
         {testError && <p className="text-xs text-red-500 mb-3 break-words">{testError}</p>}
 
+        {feedback && (
+          <p className={`text-xs mb-3 ${feedback.type === "error" ? "text-red-500" : "text-green-500"}`} role="status">
+            {feedback.text}
+          </p>
+        )}
+
         {totalModels > 0 && (
-          <div className="mb-3">
+          <div className="mb-3 flex flex-col gap-2">
             <ModelListFilterBar
               query={filterQuery}
               onQueryChange={setFilterQuery}
@@ -259,6 +298,68 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
               onTagChange={setFilterTag}
               shown={shownModels}
               total={totalModels}
+              allSelected={shownModels > 0 && [...displayModels, ...visibleCustomModels].every((m) => selectedModelIds.has(m.id))}
+              onToggleSelectAll={() => {
+                const allVisible = [...displayModels, ...visibleCustomModels];
+                const allSelected = shownModels > 0 && allVisible.every((m) => selectedModelIds.has(m.id));
+                setSelectedModelIds((prev) => {
+                  const next = new Set(prev);
+                  for (const m of allVisible) {
+                    if (allSelected) next.delete(m.id);
+                    else next.add(m.id);
+                  }
+                  return next;
+                });
+              }}
+            />
+            <ModelListBulkActionsBar
+              selectedCount={selectedModelIds.size}
+              allSelected={shownModels > 0 && [...displayModels, ...visibleCustomModels].every((m) => selectedModelIds.has(m.id))}
+              onToggleSelectAll={() => {
+                const allVisible = [...displayModels, ...visibleCustomModels];
+                const allSelected = shownModels > 0 && allVisible.every((m) => selectedModelIds.has(m.id));
+                setSelectedModelIds((prev) => {
+                  const next = new Set(prev);
+                  for (const m of allVisible) {
+                    if (allSelected) next.delete(m.id);
+                    else next.add(m.id);
+                  }
+                  return next;
+                });
+              }}
+              onClearSelection={() => setSelectedModelIds(new Set())}
+              onTestSelected={async () => {
+                if (bulkTesting || selectedModelIds.size === 0) return;
+                setBulkTesting(true);
+                setFeedback(null);
+                const ids = Array.from(selectedModelIds);
+                let okCount = 0;
+                for (const mid of ids) {
+                  setTestingModelId(mid);
+                  try {
+                    const res = await fetch("/api/models/test", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ model: `${providerAlias}/${mid}`, kind: kindFilter }),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (data.ok) okCount++;
+                    setModelTestResults((prev) => ({ ...prev, [mid]: data.ok ? "ok" : "error" }));
+                  } catch {
+                    setModelTestResults((prev) => ({ ...prev, [mid]: "error" }));
+                  }
+                }
+                setTestingModelId(null);
+                setBulkTesting(false);
+                setFeedback({
+                  type: okCount === ids.length ? "success" : "error",
+                  text: `Tested ${ids.length} model${ids.length === 1 ? "" : "s"} — ${okCount} ok, ${ids.length - okCount} failed.`,
+                });
+              }}
+              isTesting={bulkTesting}
+              onAddToCombo={() => setShowAddToCombo(true)}
+              onDeleteSelected={() => setShowConfirmDelete(true)}
+              deleteDisabled={!Array.from(selectedModelIds).some((id) => myCustomModels.some((m) => m.id === id) || modelAliases[id])}
             />
           </div>
         )}
@@ -286,6 +387,15 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
                 isTesting={testingModelId === model.id}
                 isFree={model.isFree}
                 health={healthByModel[model.id]}
+                isSelected={selectedModelIds.has(model.id)}
+                onToggleSelect={() => {
+                  setSelectedModelIds((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(model.id)) next.delete(model.id);
+                    else next.add(model.id);
+                    return next;
+                  });
+                }}
               />
             );
           })}
@@ -304,6 +414,15 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
               isTesting={testingModelId === model.id}
               isCustom
               health={healthByModel[model.id]}
+              isSelected={selectedModelIds.has(model.id)}
+              onToggleSelect={() => {
+                setSelectedModelIds((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(model.id)) next.delete(model.id);
+                  else next.add(model.id);
+                  return next;
+                });
+              }}
             />
           ))}
 
@@ -324,6 +443,46 @@ export default function ModelsCard({ providerId, kindFilter, providerAliasOverri
           setShowAddCustomModel(false);
         }}
         onClose={() => setShowAddCustomModel(false)}
+      />
+
+      <AddToComboModal
+        isOpen={showAddToCombo}
+        onClose={() => setShowAddToCombo(false)}
+        selectedModels={Array.from(selectedModelIds).map((id) => `${providerAlias}/${id}`)}
+        onSuccess={({ comboName, addedCount }) => {
+          setFeedback({
+            type: "success",
+            text: `Added ${addedCount} model${addedCount === 1 ? "" : "s"} to combo "${comboName}".`,
+          });
+        }}
+      />
+
+      <ConfirmModal
+        isOpen={showConfirmDelete}
+        onClose={() => setShowConfirmDelete(false)}
+        onConfirm={async () => {
+          const idsToDelete = Array.from(selectedModelIds);
+          setShowConfirmDelete(false);
+          let removed = 0;
+          for (const id of idsToDelete) {
+            if (myCustomModels.some((m) => m.id === id)) {
+              await handleDeleteCustomModel(id);
+              removed++;
+            } else if (modelAliases[id]) {
+              await handleDeleteAlias(id);
+              removed++;
+            }
+          }
+          setSelectedModelIds(new Set());
+          setFeedback({
+            type: "success",
+            text: `Removed ${removed} custom model${removed === 1 ? "" : "s"}.`,
+          });
+        }}
+        title="Remove Selected Custom Models"
+        message={`Are you sure you want to remove the custom models among the ${selectedModelIds.size} selected items? Built-in provider models cannot be deleted.`}
+        confirmText="Remove"
+        variant="danger"
       />
     </>
   );

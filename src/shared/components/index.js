@@ -38,6 +38,8 @@ export { default as Tooltip } from "./Tooltip";
 export { default as ProviderInfoCard } from "./ProviderInfoCard";
 export { default as CapacityBadges } from "./CapacityBadges";
 
+export { default as AddToComboModal } from "./AddToComboModal";
+export { default as ModelListBulkActionsBar } from "./ModelListBulkActionsBar";
 // Layouts
 export * from "./layouts";
 

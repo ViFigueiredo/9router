@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { getProviderIconSrc, markProviderIconMissing } from "@/shared/utils/providerIcon";
-import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, IFlowCookieModal, GitLabAuthModal, Toggle, Select, EditConnectionModal, NoAuthProxyCard, ConfirmModal } from "@/shared/components";
+import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, IFlowCookieModal, GitLabAuthModal, Toggle, Select, EditConnectionModal, NoAuthProxyCard, ConfirmModal, AddToComboModal, ModelListBulkActionsBar } from "@/shared/components";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
@@ -81,6 +81,10 @@ export default function ProviderDetailPage() {
   const [oneByOneSummary, setOneByOneSummary] = useState(null);
   const stopOneByOneRef = useRef(false);
   const [importingQoderModels, setImportingQoderModels] = useState(false);
+  const [selectedModelIds, setSelectedModelIds] = useState(() => new Set());
+  const [showAddToCombo, setShowAddToCombo] = useState(false);
+  const [showConfirmDelete, setShowConfirmDelete] = useState(false);
+  const [bulkTesting, setBulkTesting] = useState(false);
   const { copied, copy } = useCopyToClipboard();
 
   const AG_RISK_STORAGE_KEY = "ag_risk_confirmed";
@@ -1108,8 +1112,46 @@ export default function ProviderDetailPage() {
       type: "llm",
     });
 
+    const allRowModels = [...customModelRows, ...displayModels];
+    const canTest = connections.length > 0 || isFreeNoAuth;
+
     return (
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-col gap-3">
+        {allRowModels.length > 0 && (
+          <ModelListBulkActionsBar
+            selectedCount={selectedModelIds.size}
+            allSelected={allRowModels.length > 0 && allRowModels.every((m) => selectedModelIds.has(m.id))}
+            onToggleSelectAll={() => {
+              const allSelected = allRowModels.length > 0 && allRowModels.every((m) => selectedModelIds.has(m.id));
+              setSelectedModelIds((prev) => {
+                const next = new Set(prev);
+                for (const m of allRowModels) {
+                  if (allSelected) next.delete(m.id);
+                  else next.add(m.id);
+                }
+                return next;
+              });
+            }}
+            onClearSelection={() => setSelectedModelIds(new Set())}
+            onTestSelected={canTest ? async () => {
+              if (bulkTesting || selectedModelIds.size === 0) return;
+              setBulkTesting(true);
+              setModelsTestError("");
+              const ids = Array.from(selectedModelIds);
+              for (const mid of ids) {
+                await handleTestModel(mid);
+              }
+              setBulkTesting(false);
+            } : undefined}
+            isTesting={bulkTesting}
+            testDisabled={!canTest || bulkTesting}
+            onAddToCombo={() => setShowAddToCombo(true)}
+            onDeleteSelected={() => setShowConfirmDelete(true)}
+            deleteDisabled={!Array.from(selectedModelIds).some((id) => customModelRows.some((m) => m.id === id) || modelAliases[id])}
+          />
+        )}
+
+        <div className="flex flex-wrap gap-3">
         {/* Custom models first */}
         {customModelRows.map((model) => (
           <ModelRow
@@ -1134,6 +1176,15 @@ export default function ProviderDetailPage() {
             isFree={false}
             caps={getCaps(`${providerId}/${model.id}`)}
             thinkingSuffix={resolveThinkingSuffix(model.id)}
+            isSelected={selectedModelIds.has(model.id)}
+            onToggleSelect={() => {
+              setSelectedModelIds((prev) => {
+                const next = new Set(prev);
+                if (next.has(model.id)) next.delete(model.id);
+                else next.add(model.id);
+                return next;
+              });
+            }}
           />
         ))}
 
@@ -1160,6 +1211,15 @@ export default function ProviderDetailPage() {
               onDisable={() => handleDisableModel(model.id)}
               caps={getCaps(`${providerId}/${model.id}`)}
               thinkingSuffix={resolveThinkingSuffix(model.id)}
+              isSelected={selectedModelIds.has(model.id)}
+              onToggleSelect={() => {
+                setSelectedModelIds((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(model.id)) next.delete(model.id);
+                  else next.add(model.id);
+                  return next;
+                });
+              }}
             />
           );
         })}
@@ -1239,6 +1299,40 @@ export default function ProviderDetailPage() {
             </div>
           </div>
         )}
+        </div>
+
+        <AddToComboModal
+          isOpen={showAddToCombo}
+          onClose={() => setShowAddToCombo(false)}
+          selectedModels={Array.from(selectedModelIds).map((id) => `${providerDisplayAlias}/${id}`)}
+          onSuccess={({ comboName, addedCount }) => {
+            setModelsTestError("");
+          }}
+        />
+
+        <ConfirmModal
+          isOpen={showConfirmDelete}
+          onClose={() => setShowConfirmDelete(false)}
+          onConfirm={async () => {
+            const idsToDelete = Array.from(selectedModelIds);
+            setShowConfirmDelete(false);
+            for (const id of idsToDelete) {
+              const customItem = customModelRows.find((m) => m.id === id);
+              if (customItem?.source === "custom") {
+                await handleDeleteCustomModel(id, "llm", providerStorageAlias);
+              } else if (customItem?.alias) {
+                await handleDeleteAlias(customItem.alias);
+              } else if (modelAliases[id]) {
+                await handleDeleteAlias(id);
+              }
+            }
+            setSelectedModelIds(new Set());
+          }}
+          title="Remove Selected Custom Models"
+          message={`Are you sure you want to remove the custom models among the ${selectedModelIds.size} selected items? Built-in provider models cannot be deleted.`}
+          confirmText="Remove"
+          variant="danger"
+        />
       </div>
     );
   };
