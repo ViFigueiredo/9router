@@ -16,6 +16,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      # Empty on forks — the Docker Hub login step checks this.
+      DOCKERHUB_CREDS: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -31,8 +34,8 @@ jobs:
 
       # Docker Hub is upstream's registry; forks have no DOCKERHUB_* secrets.
       - name: Log in to Docker Hub
+        if: ${{ env.DOCKERHUB_CREDS != '' }}
         uses: docker/login-action@v3
-        if: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
