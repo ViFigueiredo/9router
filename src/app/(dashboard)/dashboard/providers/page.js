@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import {
   Card,
@@ -106,6 +106,8 @@ export default function ProvidersPage() {
     useState(false);
   const [testingMode, setTestingMode] = useState(null);
   const [testResults, setTestResults] = useState(null);
+  const [modelsTest, setModelsTest] = useState(null);
+  const stopModelsTestRef = useRef(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const notify = useNotificationStore();
   const searchQuery = useHeaderSearchStore((s) => s.query);
@@ -263,6 +265,69 @@ export default function ProvidersPage() {
     }
   };
 
+  const handleStopTestAllModels = () => {
+    stopModelsTestRef.current = true;
+  };
+
+  // Sequential across active connections: each POST validates every model of
+  // that connection (registry + live /models + custom), records health tags and
+  // returns per-model results. One slow connection must not block the rest —
+  // the per-model ping timeout already isolates models inside a connection.
+  const handleTestAllModels = async () => {
+    if (modelsTest?.running) return;
+    const targets = connections.filter((c) => c.isActive !== false);
+    if (targets.length === 0) {
+      notify.warning("No active connections to test");
+      return;
+    }
+    stopModelsTestRef.current = false;
+    const state = {
+      running: true, stopped: false, done: 0, total: targets.length,
+      ok: 0, failed: 0, current: null, results: [],
+    };
+    setModelsTest({ ...state });
+    for (const conn of targets) {
+      if (stopModelsTestRef.current) { state.stopped = true; break; }
+      state.current = conn.name || conn.displayName || conn.provider;
+      setModelsTest({ ...state });
+      try {
+        const res = await fetch(`/api/providers/${conn.id}/test-models`, { method: "POST" });
+        const data = await res.json().catch(() => ({}));
+        const rs = data.results || [];
+        const ok = rs.filter((r) => r.ok).length;
+        const failed = rs.length - ok;
+        state.ok += ok;
+        state.failed += failed;
+        state.results.push({
+          connectionId: conn.id,
+          name: state.current,
+          provider: conn.provider,
+          models: rs.length,
+          ok,
+          failed,
+          error: res.ok ? null : (data.error || `HTTP ${res.status}`),
+        });
+      } catch (e) {
+        state.results.push({
+          connectionId: conn.id,
+          name: state.current,
+          provider: conn.provider,
+          models: 0, ok: 0, failed: 0,
+          error: e?.message || "request failed",
+        });
+      }
+      state.done += 1;
+      setModelsTest({ ...state });
+      if (!stopModelsTestRef.current) await new Promise((r) => setTimeout(r, 500));
+    }
+    state.running = false;
+    state.current = null;
+    setModelsTest({ ...state });
+    if (state.stopped) notify.warning(`Model test stopped — ${state.ok} ok, ${state.failed} failed`);
+    else if (state.failed === 0) notify.success(`All models passed: ${state.ok} ok`);
+    else notify.warning(`Models tested: ${state.ok} ok, ${state.failed} failed`);
+  };
+
   const compatibleProviders = providerNodes
     .filter((node) => node.type === "openai-compatible")
     .map((node) => ({
@@ -386,7 +451,25 @@ export default function ProvidersPage() {
 
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
-      <div className="flex items-center justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <button
+          onClick={handleTestAllModels}
+          disabled={modelsTest?.running}
+          className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+            modelsTest?.running
+              ? "bg-primary/20 border-primary/40 text-primary animate-pulse"
+              : "bg-bg border-border text-text-muted hover:text-text-main hover:border-primary/40"
+          }`}
+          title="Test every model of every active connection (records health tags)"
+          aria-label="Test all provider models"
+        >
+          <span className={`material-symbols-outlined text-[14px]${modelsTest?.running ? " animate-spin" : ""}`}>
+            science
+          </span>
+          {modelsTest?.running
+            ? `Testing ${modelsTest.done}/${modelsTest.total}...`
+            : "Test All Models"}
+        </button>
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
@@ -400,6 +483,48 @@ export default function ProvidersPage() {
           ))}
         </select>
       </div>
+
+      {modelsTest && (
+        <Card className="p-3">
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-text-muted">
+                {modelsTest.running
+                  ? `Testing models ${modelsTest.done}/${modelsTest.total}${modelsTest.current ? ` — ${modelsTest.current}` : ""} · ${modelsTest.ok} ok, ${modelsTest.failed} failed so far`
+                  : `${modelsTest.stopped ? "Stopped" : "Done"} — ${modelsTest.done}/${modelsTest.total} connections · ${modelsTest.ok} ok, ${modelsTest.failed} failed`}
+              </p>
+              <div className="flex items-center gap-2">
+                {modelsTest.running ? (
+                  <Button size="sm" variant="secondary" onClick={handleStopTestAllModels}>
+                    Stop
+                  </Button>
+                ) : (
+                  <button
+                    onClick={() => setModelsTest(null)}
+                    className="text-xs text-text-muted hover:text-text-main"
+                  >
+                    Dismiss
+                  </button>
+                )}
+              </div>
+            </div>
+            {modelsTest.results.length > 0 && (
+              <ul className="flex max-h-48 flex-col gap-1 overflow-auto">
+                {modelsTest.results.map((r) => (
+                  <li key={r.connectionId} className="flex items-center justify-between gap-3 text-xs">
+                    <span className="min-w-0 truncate">
+                      {r.name} <span className="text-text-muted">({r.provider})</span>
+                    </span>
+                    <span className={`shrink-0 ${r.error ? "text-red-500" : r.failed > 0 ? "text-amber-500" : "text-green-500"}`}>
+                      {r.error ? r.error : `${r.ok} ok${r.failed ? `, ${r.failed} failed` : ""}`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Card>
+      )}
 
       {!hasAnyResult && (
         <div className="text-center py-8 border border-dashed border-border rounded-xl">
