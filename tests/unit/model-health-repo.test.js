@@ -6,13 +6,11 @@ import { join } from "node:path";
 // Isolate the DB from the real ~/.9router before any adapter init.
 let DATA_DIR;
 let repo;
-let driver;
 
 beforeAll(async () => {
   DATA_DIR = mkdtempSync(join(tmpdir(), "mh-repo-"));
   process.env.DATA_DIR = DATA_DIR;
   repo = await import("@/lib/db/repos/modelHealthRepo.js");
-  driver = await import("@/lib/db/driver.js");
 });
 
 afterAll(async () => {
@@ -59,7 +57,5 @@ describe("modelHealthRepo", () => {
     }));
     const all = await repo.getModelHealth();
     expect(all.anthropic["claude-3-opus"]).toBeTruthy();
-    // getAdapter stays open for later tasks in the same file suite
-    await driver.resetAdapter?.catch?.(() => {});
   });
 });

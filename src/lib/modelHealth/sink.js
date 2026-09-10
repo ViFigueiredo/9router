@@ -5,8 +5,8 @@ import {
   HEALTH_TAGS, isFatalEvent, pruneEvents, classifyModel, HEALTH_THRESHOLDS,
 } from "./classifier.js";
 
-// Fail-open: never throw. All persistence is fire-and-forget; callers (request
-// path, ping endpoints) must never await or depend on this succeeding.
+// Fail-open: never throw. Persistence is fire-and-forget — firing and
+// forgetting is fine, and awaiting is equally safe: every error path swallows.
 
 function nowMs() {
   return Date.now();
@@ -22,7 +22,13 @@ export async function recordObservation({ provider, model, kind = "llm", ok, sta
     await updateModelHealth(provider, model, (prev) => {
       const base = prev || { kind, events: [], lastPing: null, tag: HEALTH_TAGS.UNKNOWN, tagComputedAt: null };
       const events = pruneEvents(base.events || [], ts, HEALTH_THRESHOLDS.windowMs);
-      events.push({ ts, ok: !!ok, ttftMs: pingTtft ?? ttftMs, fatal });
+      // Only ok events and fatal failures are model-health signals. Non-fatal
+      // failures (401/403/429, request-shape 400s) are account/connection or
+      // request concerns — recording them consumes maxEvents slots and their
+      // mere presence would classify a lone 429/401 as "ok" window activity.
+      if (ok || fatal) {
+        events.push({ ts, ok: !!ok, ttftMs: pingTtft ?? ttftMs, fatal });
+      }
       // Persist lastPing only for pings whose outcome is meaningful for model
       // health: success (ok) or a model-fatal failure. Account-level failures
       // (401/403/429, isFatalEvent=false) keep the previous lastPing so they

@@ -17,7 +17,9 @@ export const HEALTH_TAGS = {
 };
 
 // Model-level fatal vs account-level. Auth/quota/rate (401/403/429) are handled
-// by connection locks + backoff and must NOT mark the model failing.
+// by connection locks + backoff and must NOT mark the model failing. 400 is
+// deliberately excluded too: request-shape errors (e.g. context-length
+// exceeded, malformed messages) reflect the request, not the model's health.
 export function isFatalEvent({ ok, status }) {
   if (ok) return false;
   if (status === null || status === undefined) return true;

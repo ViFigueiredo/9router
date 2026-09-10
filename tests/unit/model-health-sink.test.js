@@ -61,6 +61,21 @@ describe("modelHealth sink", () => {
     expect(fresh).toEqual({});
   });
 
+  it("does not record a lone 429 ping as health activity (stays unknown, no events, no lastPing)", async () => {
+    await sink.recordObservation({ provider: "edge429", model: "edge-429", ok: false, status: 429, isPing: true });
+    const snap = await sink.getHealthSnapshot("edge429");
+    expect(snap["edge-429"].tag).toBe(classifier.HEALTH_TAGS.UNKNOWN);
+    expect(snap["edge-429"].totalEvents).toBe(0);
+    expect(snap["edge-429"].lastPingAt).toBeNull();
+  });
+
+  it("does not record a lone 401 as health activity (stays unknown, no events)", async () => {
+    await sink.recordObservation({ provider: "edge401", model: "edge-401", ok: false, status: 401 });
+    const snap = await sink.getHealthSnapshot("edge401");
+    expect(snap["edge-401"].tag).toBe(classifier.HEALTH_TAGS.UNKNOWN);
+    expect(snap["edge-401"].totalEvents).toBe(0);
+  });
+
   it("is fail-open: bad args never throw", async () => {
     await expect(sink.recordObservation({ provider: "", model: "", ok: true })).resolves.toBeUndefined();
     await expect(sink.getHealthSnapshot(null)).resolves.toEqual({});

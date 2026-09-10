@@ -497,7 +497,14 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   if (!stream) {
     const result = await handleNonStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat: providerResponseFormat, reqLogger, toolNameMap, customToolNames, trackDone, appendLog });
     streamController.handleComplete();
-    fireObservation({ ok: true, status: 200, ttftMs: null });
+    // The handler can fail on an ok upstream (e.g. 2xx body that is not
+    // parseable JSON/SSE → createErrorResult 502). Report the actual outcome:
+    // a failed result is NOT model-health activity to record as ok.
+    if (result && result.success === false) {
+      fireObservation({ ok: false, status: result.status || 502, errorText: String(result.error || "invalid upstream response") });
+    } else {
+      fireObservation({ ok: true, status: 200, ttftMs: null });
+    }
     return result;
   }
 

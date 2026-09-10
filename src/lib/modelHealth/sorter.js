@@ -2,7 +2,7 @@
 // missing data leaves the model order untouched (today's behavior).
 import { getModelInfo as getModelInfoDefault } from "@/sse/services/model.js";
 import { getModelHealthByProvider } from "@/lib/db/repos/modelHealthRepo.js";
-import { HEALTH_TAGS } from "./classifier.js";
+import { HEALTH_TAGS, classifyModel } from "./classifier.js";
 
 const RANK = { [HEALTH_TAGS.OK]: 0, [HEALTH_TAGS.UNKNOWN]: 0, [HEALTH_TAGS.SLOW]: 1, [HEALTH_TAGS.FAILING]: 2 };
 
@@ -26,7 +26,15 @@ export async function reorderModelsByHealth(models, deps = {}) {
           }
           const map = providerCache.get(info.provider) || {};
           const mh = map[info.model];
-          rank = (mh && RANK[mh.tag]) ?? 0;
+          if (mh) {
+            // Classify at read time from the live event window — never trust the
+            // stored mh.tag, which can freeze stale (a row tagged `failing` whose
+            // fatal events have aged out of the 1h window would stay deprioritized
+            // forever without new observations). classifyModel returns UNKNOWN for
+            // stale/empty windows, so such models fall back to rank 0.
+            const { tag } = classifyModel(map, info.model, mh.kind, Date.now());
+            rank = RANK[tag] ?? 0;
+          }
         }
       } catch {
         rank = 0; // fail-open: unresolvable models keep their position
