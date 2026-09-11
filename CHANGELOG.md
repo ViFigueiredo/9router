@@ -1,3 +1,8 @@
+# v0.5.76 (2026-09-11)
+
+## Fixes
+- **Personalization**: a configured favicon no longer reverts to the default while navigating. The title and icons are now derived from settings in `generateMetadata` (so the framework itself renders the configured values on every route), the legacy `app/favicon.ico` file-convention link — which was injected after the metadata link and won in the browser — was moved to `public/`, and the client provider re-asserts the branding after each navigation
+
 # v0.5.75 (2026-09-11)
 
 ## Fixes
