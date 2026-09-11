@@ -1,3 +1,10 @@
+# v0.5.74 (2026-09-11)
+
+## Features
+- **MCP server**: expose providers, models, model health, ranking, combos and usage to agents — HTTP transport (`/api/mcp-server/sse` + JSON-RPC at `/api/mcp-server/message`) authenticated with a 9Router API key, plus a stdio shim (`9router mcp-stdio`) for stdio-only clients; read, action (test model, reorder combo) and opt-in admin tools (`set_models_enabled`, `set_connection_active`, `add_connection`, `delete_combo`)
+- **MCP dashboard**: new module with the endpoint, key, admin toggle, tool catalog and ready-to-paste configs for Cursor, VS Code, Cline and Claude Desktop
+- **Documentation**: new dashboard module with an API tab (Swagger UI themed to the instance palette) and an MCP tab listing live tools with their schemas; the OpenAPI document is verified against the real routes by a test
+
 # v0.5.73 (2026-09-11)
 
 ## Features
