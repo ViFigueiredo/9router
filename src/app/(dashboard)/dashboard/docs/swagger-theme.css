@@ -1,0 +1,114 @@
+/* Theme overrides for the embedded Swagger UI so it matches the dashboard
+   (light/dark + brand palette) instead of shipping its own look. */
+.docs-swagger {
+  color: var(--color-text-main);
+}
+
+.docs-swagger .swagger-ui {
+  color: var(--color-text-main);
+  font-family: inherit;
+}
+
+.docs-swagger .swagger-ui .info .title,
+.docs-swagger .swagger-ui .opblock-tag,
+.docs-swagger .swagger-ui .model-title,
+.docs-swagger .swagger-ui .opblock .opblock-summary-method,
+.docs-swagger .swagger-ui table thead tr th,
+.docs-swagger .swagger-ui .parameter__name,
+.docs-swagger .swagger-ui .response-col_status {
+  color: var(--color-text-main);
+  font-family: inherit;
+}
+
+.docs-swagger .swagger-ui .info .title small,
+.docs-swagger .swagger-ui .info p,
+.docs-swagger .swagger-ui .info li,
+.docs-swagger .swagger-ui .markdown p,
+.docs-swagger .swagger-ui .opblock-description-wrapper p,
+.docs-swagger .swagger-ui .parameter__type,
+.docs-swagger .swagger-ui .response-col_description__inner div.markdown p,
+.docs-swagger .swagger-ui .model,
+.docs-swagger .swagger-ui .model .property,
+.docs-swagger .swagger-ui .prop-type {
+  color: var(--color-text-muted);
+}
+
+.docs-swagger .swagger-ui .scheme-container,
+.docs-swagger .swagger-ui .opblock .opblock-summary,
+.docs-swagger .swagger-ui .models,
+.docs-swagger .swagger-ui section.models,
+.docs-swagger .swagger-ui .dialog-ux .modal-ux,
+.docs-swagger .swagger-ui .auth-container {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  box-shadow: none;
+}
+
+.docs-swagger .swagger-ui .opblock {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  border-radius: var(--radius-brand);
+}
+
+.docs-swagger .swagger-ui .opblock .opblock-summary-path,
+.docs-swagger .swagger-ui .opblock .opblock-summary-description {
+  color: var(--color-text-main);
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.docs-swagger .swagger-ui .btn {
+  border-radius: var(--radius-brand);
+  border-color: var(--color-border);
+  color: var(--color-text-main);
+  background: var(--color-surface-2);
+  box-shadow: none;
+}
+
+.docs-swagger .swagger-ui .btn.authorize,
+.docs-swagger .swagger-ui .btn.execute {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+.docs-swagger .swagger-ui .btn.execute:hover,
+.docs-swagger .swagger-ui .btn.authorize:hover {
+  background: var(--color-primary-hover);
+}
+
+.docs-swagger .swagger-ui select,
+.docs-swagger .swagger-ui input[type="text"],
+.docs-swagger .swagger-ui input[type="email"],
+.docs-swagger .swagger-ui input[type="password"],
+.docs-swagger .swagger-ui textarea {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-main);
+  border-radius: var(--radius-brand);
+  box-shadow: none;
+}
+
+.docs-swagger .swagger-ui .highlight-code > .microlight,
+.docs-swagger .swagger-ui .microlight,
+.docs-swagger .swagger-ui .model-example,
+.docs-swagger .swagger-ui .responses-inner pre {
+  background: var(--color-sidebar) !important;
+  color: var(--color-text-main) !important;
+  border-radius: var(--radius-brand);
+}
+
+/* Verb colors keep their conventional hues but softened to the palette */
+.docs-swagger .swagger-ui .opblock.opblock-get { border-color: var(--color-info); background: color-mix(in srgb, var(--color-info) 6%, transparent); }
+.docs-swagger .swagger-ui .opblock.opblock-post { border-color: var(--color-success); background: color-mix(in srgb, var(--color-success) 6%, transparent); }
+.docs-swagger .swagger-ui .opblock.opblock-patch { border-color: var(--color-warning); background: color-mix(in srgb, var(--color-warning) 6%, transparent); }
+.docs-swagger .swagger-ui .opblock.opblock-put { border-color: var(--color-warning); background: color-mix(in srgb, var(--color-warning) 6%, transparent); }
+.docs-swagger .swagger-ui .opblock.opblock-delete { border-color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 6%, transparent); }
+.docs-swagger .swagger-ui .opblock.opblock-get .opblock-summary-method { background: var(--color-info); }
+.docs-swagger .swagger-ui .opblock.opblock-post .opblock-summary-method { background: var(--color-success); }
+.docs-swagger .swagger-ui .opblock.opblock-patch .opblock-summary-method,
+.docs-swagger .swagger-ui .opblock.opblock-put .opblock-summary-method { background: var(--color-warning); }
+.docs-swagger .swagger-ui .opblock.opblock-delete .opblock-summary-method { background: var(--color-danger); }
+.docs-swagger .swagger-ui .opblock-summary-method { color: #fff; border-radius: var(--radius-brand); text-shadow: none; }
+
+.docs-swagger .swagger-ui .topbar { display: none; }
+.docs-swagger .swagger-ui .wrapper { padding: 0; max-width: none; }

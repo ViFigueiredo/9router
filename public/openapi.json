@@ -1,0 +1,627 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "9Router API",
+    "version": "1.0.0",
+    "description": "OpenAI-compatible gateway plus an administrative API.\n\n**Public LLM API** (`/v1/*`, and the `/codex` alias for `/v1/responses`) authenticates with an API key: send `Authorization: Bearer <API_KEY>` or `x-api-key: <API_KEY>`. Keys are managed in Dashboard → Endpoint & Key.\n\n**Administrative API** (`/api/*`) authenticates with the dashboard session cookie (or a CLI token). When `requireLogin` is disabled, most admin routes are open on the local network.\n\nModel strings are always `provider/model`, e.g. `openai/gpt-5.4`, or the name of a combo.",
+    "license": { "name": "MIT" }
+  },
+  "servers": [{ "url": "/", "description": "This 9Router instance" }],
+  "tags": [
+    { "name": "Chat", "description": "Chat completions across 40+ providers with format translation and fallback" },
+    { "name": "Messages", "description": "Anthropic Messages API compatibility" },
+    { "name": "Responses", "description": "OpenAI Responses API compatibility (also served at /codex)" },
+    { "name": "Models", "description": "Model catalog and metadata" },
+    { "name": "Media", "description": "Embeddings, images, audio and video generation" },
+    { "name": "Tools", "description": "Web search and URL fetch" },
+    { "name": "Combos", "description": "Ordered model groups with fallback/round-robin/fusion strategies" },
+    { "name": "Health & Ranking", "description": "Model health probes and the global ranking" },
+    { "name": "Providers", "description": "Provider connections and credential tests" },
+    { "name": "Settings", "description": "Instance settings, branding and personalization" },
+    { "name": "Usage", "description": "Token and request accounting" },
+    { "name": "MCP", "description": "Model Context Protocol server for agents" }
+  ],
+  "security": [{ "ApiKeyAuth": [] }],
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "9Router API key: `Authorization: Bearer sk-...` (an `x-api-key` header is also accepted)."
+      }
+    },
+    "schemas": {
+      "ChatMessage": {
+        "type": "object",
+        "required": ["role"],
+        "properties": {
+          "role": { "type": "string", "enum": ["system", "user", "assistant", "tool"] },
+          "content": {
+            "description": "Plain text, or an array of content parts (text/image).",
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+            ]
+          },
+          "name": { "type": "string" },
+          "tool_call_id": { "type": "string" },
+          "tool_calls": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+        }
+      },
+      "ChatCompletionRequest": {
+        "type": "object",
+        "required": ["model", "messages"],
+        "properties": {
+          "model": { "type": "string", "example": "openai/gpt-5.4", "description": "`provider/model`, or a combo name" },
+          "messages": { "type": "array", "items": { "$ref": "#/components/schemas/ChatMessage" } },
+          "stream": { "type": "boolean", "default": false, "description": "Server-sent events with `data:` chunks" },
+          "max_tokens": { "type": "integer" },
+          "temperature": { "type": "number" },
+          "top_p": { "type": "number" },
+          "tools": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+          "tool_choice": { "oneOf": [{ "type": "string" }, { "type": "object", "additionalProperties": true }] },
+          "response_format": { "type": "object", "additionalProperties": true },
+          "reasoning_effort": { "type": "string", "description": "Provider-dependent reasoning budget hint" }
+        },
+        "additionalProperties": true
+      },
+      "Usage": {
+        "type": "object",
+        "properties": {
+          "prompt_tokens": { "type": "integer" },
+          "completion_tokens": { "type": "integer" },
+          "total_tokens": { "type": "integer" }
+        }
+      },
+      "ChatCompletionResponse": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "object": { "type": "string", "example": "chat.completion" },
+          "created": { "type": "integer" },
+          "model": { "type": "string" },
+          "choices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": { "type": "integer" },
+                "message": { "$ref": "#/components/schemas/ChatMessage" },
+                "finish_reason": { "type": "string", "example": "stop" }
+              }
+            }
+          },
+          "usage": { "$ref": "#/components/schemas/Usage" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "message": { "type": "string" },
+              "type": { "type": "string" },
+              "code": { "type": "string" }
+            }
+          }
+        }
+      },
+      "Model": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "example": "openai/gpt-5.4" },
+          "object": { "type": "string", "example": "model" },
+          "created": { "type": "integer" },
+          "owned_by": { "type": "string" },
+          "kind": { "type": "string", "enum": ["llm", "image", "tts", "stt", "embedding", "video"] }
+        }
+      },
+      "RankingEntry": {
+        "type": "object",
+        "properties": {
+          "position": { "type": "integer" },
+          "provider": { "type": "string" },
+          "model": { "type": "string" },
+          "kind": { "type": "string" },
+          "tag": { "type": "string", "enum": ["ok", "slow", "failing", "unknown"] },
+          "notServed": { "type": "boolean" },
+          "stats": { "type": "object", "additionalProperties": true, "description": "Accumulated counters (ok, fail, ttftSumMs, tpsSum, …)" },
+          "rank": {
+            "type": "object",
+            "properties": {
+              "score": { "type": "number", "description": "0-100: 60% reliability + 30% speed + 10% recency" },
+              "reliability": { "type": "number" },
+              "speed": { "type": "number" },
+              "recency": { "type": "number" },
+              "samples": { "type": "integer" },
+              "deprioritized": { "type": "boolean" }
+            }
+          },
+          "combos": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "name": { "type": "string" },
+                "position": { "type": "integer" }
+              }
+            }
+          }
+        }
+      },
+      "Combo": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "kind": { "type": "string", "nullable": true },
+          "models": { "type": "array", "items": { "type": "string" }, "description": "Execution order; index 0 is tried first" },
+          "createdAt": { "type": "string" },
+          "updatedAt": { "type": "string" }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/v1/chat/completions": {
+      "post": {
+        "tags": ["Chat"],
+        "summary": "Create a chat completion",
+        "description": "Routes to the resolved provider, translating request and response formats as needed. Combo names are expanded with fallback/round-robin/fusion.",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChatCompletionRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Completion, or an SSE stream when `stream: true`",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ChatCompletionResponse" } },
+              "text/event-stream": { "schema": { "type": "string" } }
+            }
+          },
+          "401": { "description": "Missing or invalid API key", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "429": { "description": "All accounts rate-limited; `retryAfter` included", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "502": { "description": "Upstream failure with no fallback left", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/v1/messages": {
+      "post": {
+        "tags": ["Messages"],
+        "summary": "Anthropic Messages API",
+        "description": "Accepts the Claude Messages body shape (system, messages, tools, thinking) and translates to the target provider.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["model", "messages"], "additionalProperties": true } } } },
+        "responses": {
+          "200": { "description": "Message response or SSE stream" },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/v1/messages/count_tokens": {
+      "post": {
+        "tags": ["Messages"],
+        "summary": "Count tokens for a Messages request",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true } } } },
+        "responses": { "200": { "description": "{ input_tokens }" } }
+      }
+    },
+    "/v1/responses": {
+      "post": {
+        "tags": ["Responses"],
+        "summary": "OpenAI Responses API",
+        "description": "Also reachable at `/codex` for clients hardcoded to that path.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["model"], "additionalProperties": true } } } },
+        "responses": { "200": { "description": "Response object or SSE stream" } }
+      }
+    },
+    "/v1/responses/compact": {
+      "post": {
+        "tags": ["Responses"],
+        "summary": "Compact a Responses conversation",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true } } } },
+        "responses": { "200": { "description": "Compacted conversation" } }
+      }
+    },
+    "/v1/models": {
+      "get": {
+        "tags": ["Models"],
+        "summary": "List available models",
+        "parameters": [
+          { "name": "kind", "in": "query", "schema": { "type": "string", "enum": ["llm", "image", "tts", "stt", "embedding", "video"] } },
+          { "name": "provider", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Model list",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "object": { "type": "string" }, "data": { "type": "array", "items": { "$ref": "#/components/schemas/Model" } } } } } }
+          }
+        }
+      }
+    },
+    "/v1/models/{model}": {
+      "get": {
+        "tags": ["Models"],
+        "summary": "Retrieve one model",
+        "parameters": [{ "name": "model", "in": "path", "required": true, "schema": { "type": "string" }, "example": "openai/gpt-5.4" }],
+        "responses": { "200": { "description": "Model object", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Model" } } } }, "404": { "description": "Unknown model" } }
+      }
+    },
+    "/v1/models/info": {
+      "get": {
+        "tags": ["Models"],
+        "summary": "Model kinds and their endpoint mapping",
+        "responses": { "200": { "description": "Map of kind → endpoint, e.g. llm → /v1/chat/completions" } }
+      }
+    },
+    "/v1/embeddings": {
+      "post": {
+        "tags": ["Media"],
+        "summary": "Create embeddings",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["model", "input"],
+                "properties": {
+                  "model": { "type": "string", "example": "openai/text-embedding-3-small" },
+                  "input": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }] }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "`{ data: [{ embedding: [...] }], usage }`" } }
+      }
+    },
+    "/v1/images/generations": {
+      "post": {
+        "tags": ["Media"],
+        "summary": "Generate images",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["model", "prompt"],
+                "properties": {
+                  "model": { "type": "string", "example": "huggingface/black-forest-labs/FLUX.1-schnell" },
+                  "prompt": { "type": "string" },
+                  "n": { "type": "integer" },
+                  "size": { "type": "string" },
+                  "response_format": { "type": "string", "enum": ["url", "b64_json"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "`{ data: [{ url | b64_json }] }`" } }
+      }
+    },
+    "/v1/audio/speech": {
+      "post": {
+        "tags": ["Media"],
+        "summary": "Text to speech",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["model", "input"],
+                "properties": {
+                  "model": { "type": "string", "example": "openai/tts-1" },
+                  "input": { "type": "string" },
+                  "voice": { "type": "string" },
+                  "response_format": { "type": "string", "enum": ["mp3", "opus", "aac", "flac", "wav", "pcm", "json"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Audio bytes (or JSON when response_format=json)" } }
+      }
+    },
+    "/v1/audio/transcriptions": {
+      "post": {
+        "tags": ["Media"],
+        "summary": "Speech to text",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["model", "file"],
+                "properties": {
+                  "model": { "type": "string", "example": "groq/whisper-large-v3" },
+                  "file": { "type": "string", "format": "binary" },
+                  "language": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "`{ text }`" } }
+      }
+    },
+    "/v1/audio/voices": {
+      "get": {
+        "tags": ["Media"],
+        "summary": "List TTS voices",
+        "parameters": [
+          { "name": "provider", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "lang", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "OpenAI-style voice list with model ids ready for /v1/audio/speech" } }
+      }
+    },
+    "/v1/videos/generations": {
+      "post": {
+        "tags": ["Media"],
+        "summary": "Create a video generation job (async)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["model", "prompt"], "additionalProperties": true } } } },
+        "responses": { "200": { "description": "`{ request_id }` — poll /v1/videos/{id}" } }
+      }
+    },
+    "/v1/videos/edits": {
+      "post": {
+        "tags": ["Media"],
+        "summary": "Edit a video (async)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true } } } },
+        "responses": { "200": { "description": "`{ request_id }`" } }
+      }
+    },
+    "/v1/videos/extensions": {
+      "post": {
+        "tags": ["Media"],
+        "summary": "Extend a video (async)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true } } } },
+        "responses": { "200": { "description": "`{ request_id }`" } }
+      }
+    },
+    "/v1/videos/{id}": {
+      "get": {
+        "tags": ["Media"],
+        "summary": "Poll a video job",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Job status plus `url` when done" } }
+      }
+    },
+    "/v1/search": {
+      "post": {
+        "tags": ["Tools"],
+        "summary": "Web search through a configured provider",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["model", "query"], "properties": { "model": { "type": "string" }, "query": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Search results" } }
+      }
+    },
+    "/v1/web/fetch": {
+      "post": {
+        "tags": ["Tools"],
+        "summary": "Fetch a URL as text/markdown",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["model", "url"], "properties": { "model": { "type": "string" }, "url": { "type": "string", "format": "uri" } } } } } },
+        "responses": { "200": { "description": "Fetched content" } }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "tags": ["Health & Ranking"],
+        "summary": "Liveness probe",
+        "security": [],
+        "responses": { "200": { "description": "`{ ok: true }`", "content": { "application/json": { "schema": { "type": "object", "properties": { "ok": { "type": "boolean" } } } } } } }
+      }
+    },
+    "/api/ranking": {
+      "get": {
+        "tags": ["Health & Ranking"],
+        "summary": "Global provider/model ranking",
+        "parameters": [
+          { "name": "provider", "in": "query", "schema": { "type": "string" } },
+          { "name": "kind", "in": "query", "schema": { "type": "string" } },
+          { "name": "measuredOnly", "in": "query", "schema": { "type": "boolean", "default": true } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ranked models plus provider aggregates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "weights": { "type": "object" },
+                    "models": { "type": "array", "items": { "$ref": "#/components/schemas/RankingEntry" } },
+                    "providers": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ranking/reset": {
+      "post": {
+        "tags": ["Health & Ranking"],
+        "summary": "Reset accumulated ranking counters",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["provider"],
+                "properties": { "provider": { "type": "string" }, "model": { "type": "string", "description": "Omit to reset every model of the provider" } }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "`{ ok: true, changed: boolean }`" } }
+      }
+    },
+    "/api/model-health": {
+      "get": {
+        "tags": ["Health & Ranking"],
+        "summary": "Per-model health snapshot of one provider",
+        "parameters": [{ "name": "provider", "in": "query", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Map of model → tag, latency, tok/s, events, last error" } }
+      }
+    },
+    "/api/models/test": {
+      "post": {
+        "tags": ["Health & Ranking"],
+        "summary": "Ping one model through the gateway",
+        "description": "Routes by kind (chat, embeddings, images, audio) and records the outcome in model health. Health probes never write account locks.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["model"],
+                "properties": {
+                  "model": { "type": "string", "example": "openai/gpt-5.4" },
+                  "kind": { "type": "string", "enum": ["llm", "embedding", "image", "stt", "tts", "video"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "`{ ok, tag, latencyMs, tps, error, skipped? }`" } }
+      }
+    },
+    "/api/providers": {
+      "get": {
+        "tags": ["Providers"],
+        "summary": "List provider connections",
+        "responses": { "200": { "description": "`{ connections: [...] }`" } }
+      }
+    },
+    "/api/providers/{id}/test-models": {
+      "post": {
+        "tags": ["Providers"],
+        "summary": "Validate every model of a connection's provider",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Connection id" }],
+        "responses": { "200": { "description": "`{ provider, connectionId, results: [{ modelId, ok, tag, … }] }`" } }
+      }
+    },
+    "/api/combos": {
+      "get": {
+        "tags": ["Combos"],
+        "summary": "List combos",
+        "responses": { "200": { "description": "`{ combos: [Combo] }`", "content": { "application/json": { "schema": { "type": "object", "properties": { "combos": { "type": "array", "items": { "$ref": "#/components/schemas/Combo" } } } } } } } }
+      },
+      "post": {
+        "tags": ["Combos"],
+        "summary": "Create a combo",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["name", "models"], "properties": { "name": { "type": "string" }, "kind": { "type": "string" }, "models": { "type": "array", "items": { "type": "string" } } } } } } },
+        "responses": { "201": { "description": "Created combo", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Combo" } } } } }
+      }
+    },
+    "/api/combos/{id}/reorder": {
+      "post": {
+        "tags": ["Combos"],
+        "summary": "Reclassify a combo by the global ranking",
+        "description": "Position-locked models keep their exact index; the rest are ordered by ranking score, unscored models last.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "`{ changed, models, lockedModels, scored }`" } }
+      }
+    },
+    "/api/combos/{id}/ordering": {
+      "get": {
+        "tags": ["Combos"],
+        "summary": "Read position locks and auto-reorder flag",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "`{ lockedModels: [], autoReorder: boolean }`" } }
+      },
+      "patch": {
+        "tags": ["Combos"],
+        "summary": "Update position locks / auto-reorder",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "lockedModels": { "type": "array", "items": { "type": "string" }, "description": "Validated against the combo's models" },
+                  "autoReorder": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Saved ordering" } }
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "tags": ["Settings"],
+        "summary": "Read instance settings",
+        "description": "Secrets (password, OIDC secret) are never returned.",
+        "responses": { "200": { "description": "Merged settings including `branding`, `providerRevalidation`, `comboOrdering`, `mcpAllowAdmin`" } }
+      },
+      "patch": {
+        "tags": ["Settings"],
+        "summary": "Update instance settings",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true } } } },
+        "responses": { "200": { "description": "Updated settings" } }
+      }
+    },
+    "/api/usage/stats": {
+      "get": {
+        "tags": ["Usage"],
+        "summary": "Usage statistics",
+        "parameters": [{ "name": "period", "in": "query", "schema": { "type": "string", "enum": ["today", "24h", "7d", "30d", "60d", "all"], "default": "7d" } }],
+        "responses": { "200": { "description": "Token and request totals, plus chart series" } }
+      }
+    },
+    "/api/mcp-server/message": {
+      "post": {
+        "tags": ["MCP"],
+        "summary": "MCP JSON-RPC 2.0 endpoint",
+        "description": "Methods: `initialize`, `ping`, `tools/list`, `tools/call`. Authenticates with a 9Router API key. Administrative tools require `mcpAllowAdmin` to be enabled in Settings.",
+        "parameters": [{ "name": "sessionId", "in": "query", "schema": { "type": "string" }, "description": "Optional SSE session to mirror the response into" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["jsonrpc", "method"],
+                "properties": {
+                  "jsonrpc": { "type": "string", "enum": ["2.0"] },
+                  "id": { "oneOf": [{ "type": "integer" }, { "type": "string" }] },
+                  "method": { "type": "string", "example": "tools/call" },
+                  "params": { "type": "object", "additionalProperties": true }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "JSON-RPC response" },
+          "202": { "description": "Notification accepted (no body)" },
+          "401": { "description": "Missing or invalid API key" }
+        }
+      }
+    },
+    "/api/mcp-server/sse": {
+      "get": {
+        "tags": ["MCP"],
+        "summary": "MCP SSE handshake",
+        "description": "Emits an `endpoint` event pointing at the message URL for the session. Requires an API key.",
+        "responses": {
+          "200": { "description": "text/event-stream", "content": { "text/event-stream": { "schema": { "type": "string" } } } },
+          "401": { "description": "Missing or invalid API key" }
+        }
+      }
+    }
+  }
+}
