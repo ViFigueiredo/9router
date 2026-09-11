@@ -1,3 +1,9 @@
+# v0.5.72 (2026-09-11)
+
+## Fixes
+- **Routing**: health probes (manual model test and auto-revalidation) are now marked and skipped by the account-lock path — a failing ping used to write a 2-minute model lock, taking that account's real traffic offline
+- **Model Health**: auto-revalidation skips the cycle entirely while every account is locked (retrying right after the earliest lock expires) and jitters scheduled runs so providers don't probe in lockstep
+
 # v0.5.71 (2026-09-11)
 
 ## Features
