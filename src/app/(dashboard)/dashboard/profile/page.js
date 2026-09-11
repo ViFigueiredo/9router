@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Card, Button, Toggle, Input } from "@/shared/components";
 import Modal, { ConfirmModal } from "@/shared/components/Modal";
 import LanguageSwitcher from "@/shared/components/LanguageSwitcher";
+import { BRANDING_EVENT } from "@/shared/components/BrandingProvider";
 import { useTheme } from "@/shared/hooks/useTheme";
 import { cn } from "@/shared/utils/cn";
 import { APP_CONFIG } from "@/shared/constants/config";
@@ -26,6 +27,9 @@ export default function ProfilePage() {
   const [shutdownOpen, setShutdownOpen] = useState(false);
   const [isShuttingDown, setIsShuttingDown] = useState(false);
   const [settings, setSettings] = useState({ fallbackStrategy: "fill-first" });
+  const [brandingForm, setBrandingForm] = useState(null);
+  const [brandingSaving, setBrandingSaving] = useState(false);
+  const [brandingStatus, setBrandingStatus] = useState({ type: "", message: "" });
   const [loading, setLoading] = useState(true);
   const [passwords, setPasswords] = useState({ current: "", new: "", confirm: "" });
   const [passStatus, setPassStatus] = useState({ type: "", message: "" });
@@ -646,6 +650,55 @@ export default function ProfilePage() {
       }
     } catch (err) {
       console.error("Failed to update enableObservability:", err);
+    }
+  };
+
+  // ── Personalization (name, logo, favicon, palette) ────────────────────────
+  const brandingDraft = brandingForm ?? (settings.branding || { appName: "", logoDataUrl: "", faviconDataUrl: "", primaryColor: "" });
+  // Images are stored as data URLs inside settings so they travel with the
+  // backup/export and need no upload route; sizes are capped to keep the row small.
+  const readImageFile = (file, maxBytes) => new Promise((resolve, reject) => {
+    if (!file) return resolve(null);
+    if (!file.type.startsWith("image/")) return reject(new Error("Only image files are allowed"));
+    if (file.size > maxBytes) return reject(new Error(`Image must be smaller than ${Math.round(maxBytes / 1024)}KB`));
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("Could not read the file"));
+    reader.readAsDataURL(file);
+  });
+
+  const handleBrandingFile = async (field, file, maxBytes) => {
+    try {
+      const dataUrl = await readImageFile(file, maxBytes);
+      if (!dataUrl) return;
+      setBrandingForm({ ...brandingDraft, [field]: dataUrl });
+      setBrandingStatus({ type: "", message: "" });
+    } catch (err) {
+      setBrandingStatus({ type: "error", message: err.message });
+    }
+  };
+
+  const saveBranding = async (patch) => {
+    const next = { ...brandingDraft, ...(patch || {}) };
+    setBrandingSaving(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ branding: next }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to save personalization");
+      const saved = data.branding || next;
+      setSettings((prev) => ({ ...prev, branding: saved }));
+      setBrandingForm(null);
+      // Applies name/colors/favicon live, without a reload.
+      window.dispatchEvent(new CustomEvent(BRANDING_EVENT, { detail: saved }));
+      setBrandingStatus({ type: "success", message: "Personalization saved" });
+    } catch (err) {
+      setBrandingStatus({ type: "error", message: err.message });
+    } finally {
+      setBrandingSaving(false);
     }
   };
 
@@ -1618,6 +1671,142 @@ export default function ProfilePage() {
               onChange={updateObservabilityEnabled}
               disabled={loading}
             />
+          </div>
+        </Card>
+
+        {/* Personalization: name, logo, favicon, palette */}
+        <Card>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 rounded-lg bg-primary/10 text-primary shrink-0">
+              <span className="material-symbols-outlined text-[20px]">palette</span>
+            </div>
+            <div>
+              <h2 className="text-lg sm:text-xl font-semibold">Personalization</h2>
+              <p className="text-sm text-text-muted">Name, logo, favicon and brand color for this instance</p>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-4">
+            <Input
+              label="App name"
+              value={brandingDraft.appName || ""}
+              onChange={(e) => setBrandingForm({ ...brandingDraft, appName: e.target.value })}
+              placeholder={APP_CONFIG.name}
+            />
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Logo</label>
+                <div className="flex items-center gap-3">
+                  <div className="flex size-10 items-center justify-center overflow-hidden rounded-lg border border-border bg-surface-2">
+                    {brandingDraft.logoDataUrl ? (
+                      <span
+                        role="img"
+                        aria-label="Logo preview"
+                        className="size-10 bg-contain bg-center bg-no-repeat"
+                        style={{ backgroundImage: `url("${brandingDraft.logoDataUrl}")` }}
+                      />
+                    ) : (
+                      <span className="material-symbols-outlined text-[18px] text-text-muted">image</span>
+                    )}
+                  </div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleBrandingFile("logoDataUrl", e.target.files?.[0], 200 * 1024)}
+                    className="w-full text-xs text-text-muted file:mr-2 file:rounded file:border-0 file:bg-primary/10 file:px-2 file:py-1 file:text-xs file:text-primary"
+                  />
+                  {brandingDraft.logoDataUrl && (
+                    <button
+                      onClick={() => setBrandingForm({ ...brandingDraft, logoDataUrl: "" })}
+                      className="rounded p-1 text-text-muted hover:text-red-500"
+                      title="Remove logo"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">close</span>
+                    </button>
+                  )}
+                </div>
+                <p className="mt-1 text-[10px] text-text-muted">PNG/SVG/JPEG, up to 200KB</p>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Favicon</label>
+                <div className="flex items-center gap-3">
+                  <div className="flex size-10 items-center justify-center overflow-hidden rounded-lg border border-border bg-surface-2">
+                    {brandingDraft.faviconDataUrl ? (
+                      <span
+                        role="img"
+                        aria-label="Favicon preview"
+                        className="size-5 bg-contain bg-center bg-no-repeat"
+                        style={{ backgroundImage: `url("${brandingDraft.faviconDataUrl}")` }}
+                      />
+                    ) : (
+                      <span className="material-symbols-outlined text-[18px] text-text-muted">globe</span>
+                    )}
+                  </div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleBrandingFile("faviconDataUrl", e.target.files?.[0], 64 * 1024)}
+                    className="w-full text-xs text-text-muted file:mr-2 file:rounded file:border-0 file:bg-primary/10 file:px-2 file:py-1 file:text-xs file:text-primary"
+                  />
+                  {brandingDraft.faviconDataUrl && (
+                    <button
+                      onClick={() => setBrandingForm({ ...brandingDraft, faviconDataUrl: "" })}
+                      className="rounded p-1 text-text-muted hover:text-red-500"
+                      title="Remove favicon"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">close</span>
+                    </button>
+                  )}
+                </div>
+                <p className="mt-1 text-[10px] text-text-muted">PNG/SVG/ICO, up to 64KB</p>
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Brand color</label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="color"
+                  value={brandingDraft.primaryColor || "#e56a4a"}
+                  onChange={(e) => setBrandingForm({ ...brandingDraft, primaryColor: e.target.value })}
+                  className="h-9 w-14 cursor-pointer rounded border border-border bg-background p-0.5"
+                  title="Pick the brand color; the full shade scale is derived from it"
+                />
+                <code className="font-mono text-xs text-text-muted">{brandingDraft.primaryColor || "default (#e56a4a)"}</code>
+                {brandingDraft.primaryColor && (
+                  <button
+                    onClick={() => setBrandingForm({ ...brandingDraft, primaryColor: "" })}
+                    className="rounded border border-border px-2 py-1 text-[11px] text-text-muted hover:border-primary hover:text-primary"
+                  >
+                    Reset color
+                  </button>
+                )}
+              </div>
+              <p className="mt-1 text-[10px] text-text-muted">
+                Shade scale (brand-50…900), primary, hover and focus ring are derived automatically.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" onClick={() => saveBranding()} disabled={brandingSaving}>
+                {brandingSaving ? "Saving..." : "Save personalization"}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => saveBranding({ appName: "", logoDataUrl: "", faviconDataUrl: "", primaryColor: "" })}
+                disabled={brandingSaving}
+              >
+                Reset to defaults
+              </Button>
+              {brandingStatus.message && (
+                <span className={`text-xs ${brandingStatus.type === "error" ? "text-red-500" : "text-green-500"}`}>
+                  {brandingStatus.message}
+                </span>
+              )}
+            </div>
           </div>
         </Card>
 

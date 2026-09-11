@@ -15,6 +15,7 @@ const DEFAULT_SETTINGS = {
   providerStrategies: {},
   providerRevalidation: {},
   comboOrdering: {},
+  branding: { appName: "", logoDataUrl: "", faviconDataUrl: "", primaryColor: "" },
   quotaVisibility: {},
   comboStrategy: "fallback",
   comboStickyRoundRobinLimit: 1,

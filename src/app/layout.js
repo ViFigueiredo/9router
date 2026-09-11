@@ -4,6 +4,7 @@ import { GoogleAnalytics } from "@next/third-parties/google";
 import "material-symbols/outlined.css";
 import "./globals.css";
 import { ThemeProvider } from "@/shared/components/ThemeProvider";
+import BrandingProvider from "@/shared/components/BrandingProvider";
 import "@/lib/network/initOutboundProxy"; // Auto-initialize outbound proxy env
 import "@/shared/services/bootstrap"; // Auto-run initializeApp (watchdog, auto-resume tunnel)
 import { initConsoleLogCapture } from "@/lib/consoleLogBuffer";
@@ -52,9 +53,11 @@ export default function RootLayout({ children }) {
           }}
         />
         <ThemeProvider>
-          <RuntimeI18nProvider>
-            {children}
-          </RuntimeI18nProvider>
+          <BrandingProvider>
+            <RuntimeI18nProvider>
+              {children}
+            </RuntimeI18nProvider>
+          </BrandingProvider>
         </ThemeProvider>
         <GoogleAnalytics gaId={"G-LC959F603F"} />
       </body>
