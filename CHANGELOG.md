@@ -1,3 +1,11 @@
+# v0.5.71 (2026-09-11)
+
+## Features
+- **Model Health**: per-provider auto-revalidation worker — periodically re-checks connection credentials and model pings in the background, configurable per provider (5/10/15/30/60 min) in the provider page; model pings are skipped when every credential fails
+
+## Fixes
+- **Model Health**: probe TTS models through `/v1/audio/speech` instead of the chat endpoint; video models (no cheap probe) are reported as skipped rather than tagged failing
+
 # v0.5.70 (2026-09-10)
 
 ## Features
@@ -13,9 +21,6 @@
 - **ChatCore**: report generation TPS on non-streaming and forced SSE→JSON paths
 
 # Unreleased
-
-## Features
-- **Model Health**: per-provider auto-revalidation worker — periodically re-checks connection credentials and model pings in the background, configurable per provider (5/10/15/30/60 min) in the provider page; model pings are skipped when every credential fails
 
 
 # v0.5.69 (2026-09-05)
