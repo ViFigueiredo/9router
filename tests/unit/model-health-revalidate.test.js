@@ -38,9 +38,11 @@ const ALL_IDS = REGISTRY.map(modelId);
 const CHAT_IDS = REGISTRY.filter((m) => kindOf(m) === "llm").map(modelId);
 const EMBEDDING_IDS = REGISTRY.filter((m) => kindOf(m) === "embedding").map(modelId);
 const IMAGE_IDS = REGISTRY.filter((m) => kindOf(m) === "image").map(modelId);
-// Only `stt` has its own branch in pingModelByKind; `tts` falls through to the
-// chat endpoint, so it is not asserted here.
+// `stt` and `tts` have their own branches in pingModelByKind and resolve to the
+// mocked 500 (audio endpoints have no deterministic mock); `video` is skipped
+// without a request, so it is not asserted here.
 const AUDIO_STT_IDS = REGISTRY.filter((m) => kindOf(m) === "stt").map(modelId);
+const AUDIO_TTS_IDS = REGISTRY.filter((m) => kindOf(m) === "tts").map(modelId);
 
 const originalFetch = global.fetch;
 
@@ -95,7 +97,7 @@ describe("revalidateProviderModels", () => {
     for (const id of [...CHAT_IDS, ...EMBEDDING_IDS, ...IMAGE_IDS]) {
       expect(out.results.find((r) => r.modelId === id).ok).toBe(true);
     }
-    for (const id of AUDIO_STT_IDS) {
+    for (const id of [...AUDIO_STT_IDS, ...AUDIO_TTS_IDS]) {
       expect(out.results.find((r) => r.modelId === id).ok).toBe(false);
     }
     expect(global.fetch).toHaveBeenCalledWith(
@@ -119,6 +121,24 @@ describe("revalidateProviderModels", () => {
     const out = await revalidateProviderModels("openai", { connectionId: "conn-1" });
 
     expect(out.results.find((r) => r.modelId === CHAT_IDS[0]).tag).toBe("failing");
+  });
+
+  it("does not probe or record health for kinds without a cheap probe (video)", async () => {
+    const { revalidateProviderModels } = await import("../../src/lib/modelHealth/revalidate.js");
+    const xai = getProviderModels("xai");
+    const videoIds = xai.filter((m) => kindOf(m) === "video").map(modelId);
+    const probedCount = xai.length - videoIds.length;
+    expect(videoIds.length).toBeGreaterThan(0);
+
+    const out = await revalidateProviderModels("xai", { connectionId: "conn-1" });
+
+    for (const id of videoIds) {
+      const r = out.results.find((x) => x.modelId === id);
+      expect(r.skipped).toBe(true);
+      expect(r.ok).toBe(false);
+    }
+    expect(mocks.recordObservation).toHaveBeenCalledTimes(probedCount);
+    expect(global.fetch.mock.calls.some(([u]) => String(u).includes("/api/v1/videos"))).toBe(false);
   });
 
   it("returns empty:true and records nothing when the provider has no models", async () => {

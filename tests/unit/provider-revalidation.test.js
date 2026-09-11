@@ -136,6 +136,19 @@ describe("revalidateProvider", () => {
     expect(res.status).toBe("partial");
   });
 
+  it("treats skipped models as neither success nor failure", async () => {
+    mocks.getProviderConnections.mockResolvedValue([{ id: "c1" }]);
+    mocks.testSingleConnection.mockResolvedValue({ valid: true });
+    mocks.revalidateProviderModels.mockResolvedValue({
+      results: [{ ok: false, skipped: true }, { ok: true }],
+    });
+    const { revalidateProvider } = await import("../../src/shared/services/providerRevalidation.js");
+
+    const res = await revalidateProvider("openai", mocks, freshState());
+
+    expect(res.status).toBe("ok");
+  });
+
   it("clears the in-flight guard even when the cycle throws", async () => {
     mocks.getProviderConnections.mockRejectedValue(new Error("db down"));
     const state = freshState();

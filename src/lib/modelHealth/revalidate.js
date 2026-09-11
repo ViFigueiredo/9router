@@ -109,6 +109,9 @@ export async function revalidateProviderModels(providerId, { connectionId, baseU
   try {
     const seenProviders = new Set([providerId]);
     for (const r of results) {
+      // Kinds with no cheap probe (video) are reported as skipped: no health
+      // event, so they are neither marked healthy nor tagged failing.
+      if (r.skipped) continue;
       const fullModel = `${alias}/${r.modelId}`;
       const info = await getModelInfo(fullModel).catch(() => null);
       const provider = info?.provider || providerId;

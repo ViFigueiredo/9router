@@ -115,7 +115,7 @@ export async function revalidateProvider(providerId, deps = createDefaultDeps(),
       await persistResult(deps, providerId, { lastRunAt: Date.now(), lastStatus: "error", lastError: "no models configured" });
       return { providerId, status: "error", error: "no models configured" };
     }
-    const failed = (out.results || []).filter((r) => !r.ok).length;
+    const failed = (out.results || []).filter((r) => !r.ok && !r.skipped).length;
     const status = failed === 0 ? "ok" : "partial";
     await persistResult(deps, providerId, { lastRunAt: Date.now(), lastStatus: status, lastError: null });
     return { providerId, status, failed };

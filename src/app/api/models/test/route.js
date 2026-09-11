@@ -11,18 +11,20 @@ export async function POST(request) {
     const result = await pingModelByKind(model, kind || "llm");
     const info = await getModelInfo(model).catch(() => null);
     const inconclusive = !result.ok && /timeout|aborted/i.test(String(result.error || ""));
-    await recordObservation({
-      provider: info?.provider || "unknown",
-      model: info?.model || model,
-      kind: kind || "llm",
-      ok: !!result.ok,
-      status: result.status ?? null,
-      ttftMs: typeof result.latencyMs === "number" ? result.latencyMs : null,
-      tps: typeof result.tps === "number" ? result.tps : null,
-      isPing: true,
-      errorText: result.error || "",
-      ...(inconclusive ? { fatalOverride: false } : {}),
-    });
+    if (!result.skipped) {
+      await recordObservation({
+        provider: info?.provider || "unknown",
+        model: info?.model || model,
+        kind: kind || "llm",
+        ok: !!result.ok,
+        status: result.status ?? null,
+        ttftMs: typeof result.latencyMs === "number" ? result.latencyMs : null,
+        tps: typeof result.tps === "number" ? result.tps : null,
+        isPing: true,
+        errorText: result.error || "",
+        ...(inconclusive ? { fatalOverride: false } : {}),
+      });
+    }
     if (result.ok) result.tag = "ok";
     return NextResponse.json(result);
   } catch (err) {

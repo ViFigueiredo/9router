@@ -130,6 +130,35 @@ export async function pingModelByKind(model, kind, baseUrl = `http://127.0.0.1:$
     return { ok: true, latencyMs, error: null, status: res.status };
   }
 
+  if (kind === "tts") {
+    const res = await fetch(`${baseUrl}/api/v1/audio/speech`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ model, input: "test" }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const latencyMs = Date.now() - start;
+    if (!res.ok) {
+      const rawText = await res.text().catch(() => "");
+      let parsed = null;
+      try { parsed = rawText ? JSON.parse(rawText) : null; } catch {}
+      const detail = parsed?.error?.message || parsed?.msg || parsed?.message || parsed?.error || rawText;
+      return { ok: false, latencyMs, error: `HTTP ${res.status}${detail ? `: ${String(detail).slice(0, 240)}` : ""}`, status: res.status };
+    }
+    const audio = await res.arrayBuffer().catch(() => null);
+    if (!audio || audio.byteLength === 0) {
+      return { ok: false, latencyMs, status: res.status, error: "Provider returned no audio data" };
+    }
+    return { ok: true, latencyMs, error: null, status: res.status };
+  }
+
+  if (kind === "video") {
+    // A video probe would create a real (paid, long-running) generation job, so
+    // there is no cheap health check for this kind. Report it as skipped so it is
+    // neither recorded as healthy nor tagged failing.
+    return { ok: false, latencyMs: 0, status: null, skipped: true, error: "video models are not probed" };
+  }
+
   const res = await fetch(`${baseUrl}/api/v1/chat/completions`, {
     method: "POST",
     headers,
