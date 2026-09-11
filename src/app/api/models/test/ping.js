@@ -1,6 +1,7 @@
 import { getApiKeys } from "@/lib/localDb";
 import { UPDATER_CONFIG } from "@/shared/constants/config";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
+import { PROBE_HEADER } from "@/sse/services/probeRequest.js";
 
 const CLI_TOKEN_SALT = "9r-cli-auth";
 
@@ -47,6 +48,8 @@ async function getInternalHeaders() {
   const headers = { "Content-Type": "application/json" };
   if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
   headers["x-9r-cli-token"] = await getConsistentMachineId(CLI_TOKEN_SALT);
+  // Health probes must not persist account locks/cooldowns for the routing path.
+  headers[PROBE_HEADER] = "1";
   return headers;
 }
 

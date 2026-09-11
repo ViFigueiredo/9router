@@ -7,6 +7,7 @@ import {
   extractApiKey,
   isValidApiKey,
 } from "../services/auth.js";
+import { isProbeRequest } from "../services/probeRequest.js";
 import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
@@ -229,6 +230,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // Extract userAgent from request
   const userAgent = request?.headers?.get("user-agent") || "";
 
+  // Health probes (manual model test / auto-revalidation) are read-only for
+  // account health: they must not write model locks or clear backoff state that
+  // real traffic depends on.
+  const isProbe = isProbeRequest(request);
+
   // Try with available accounts (fallback on errors)
   const excludeConnectionIds = new Set();
   let lastError = null;
@@ -305,6 +311,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         });
       },
       onRequestSuccess: async () => {
+        if (isProbe) return;
         await clearAccountError(credentials.connectionId, credentials, model);
         // "Consecutive" strikes: a success clears the breaker for this pair.
         clearAntigravityStrikes(credentials.connectionId, model);
@@ -317,7 +324,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     // Antigravity 409/429: refresh live quota to get exact resetAt before locking
     let quotaResetMs = null;
     let resetsAtMs = result.resetsAtMs;
-    if (provider === "antigravity" && (result.status === 409 || result.status === 429)) {
+    if (!isProbe && provider === "antigravity" && (result.status === 409 || result.status === 429)) {
       quotaResetMs = await handleAntigravityQuotaError(
         credentials.connectionId, result.status, model,
         refreshedCredentials.accessToken, credentials.providerSpecificData
@@ -327,9 +334,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     // Exhausted Antigravity model is blocked only in RAM cache until upstream resetAt.
     // Do not persist a modelLock_* for this path.
-    const shouldFallback = provider === "antigravity" && quotaResetMs
-      ? true
-      : (await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, resetsAtMs)).shouldFallback;
+    // Probes never fall back: the caller wants this attempt's outcome, and marking
+    // the account unavailable would take real traffic offline.
+    const shouldFallback = isProbe
+      ? false
+      : (provider === "antigravity" && quotaResetMs
+        ? true
+        : (await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, resetsAtMs)).shouldFallback);
 
     if (shouldFallback) {
       log.warn("FALLBACK", `⇄ ACC:${credentials.connectionName} UNAVAILABLE (${result.status}) → NEXT ACCOUNT`);

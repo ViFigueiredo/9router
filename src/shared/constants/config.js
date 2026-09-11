@@ -110,6 +110,12 @@ export const PROVIDER_REVALIDATION_CONFIG = {
   // to "unknown" between two runs (the classifier prunes events past the window).
   maxIntervalMinutes: 60,
   defaultIntervalMinutes: 30,
+  // Spread provider runs so several providers never probe upstream in lockstep.
+  jitterMs: 15_000,
+  // When every account is locked, retry soon after the earliest lock expires
+  // (bounded below) instead of waiting a whole interval.
+  lockedRetryMinMs: 30_000,
+  lockedRetryBufferMs: 5_000,
 };
 
 // Re-export from providers.js for backward compatibility

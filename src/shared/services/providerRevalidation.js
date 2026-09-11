@@ -5,6 +5,7 @@ import { getSettings, updateSettings, getProviderConnections } from "@/lib/db/in
 import { testSingleConnection } from "@/app/api/providers/[id]/test/testUtils.js";
 import { revalidateProviderModels } from "@/lib/modelHealth/revalidate.js";
 import { PROVIDER_REVALIDATION_CONFIG } from "@/shared/constants/config";
+import { MODEL_LOCK_ALL, isAccountUnavailable } from "open-sse/services/accountFallback.js";
 
 const C = PROVIDER_REVALIDATION_CONFIG;
 
@@ -66,6 +67,19 @@ function createDefaultDeps() {
   };
 }
 
+// Account-level lock only: a rate-limited cooldown or the `__all` model lock.
+// Per-model locks are intentionally ignored — they affect one model, so the rest
+// of the provider can still be probed.
+export function accountLockUntil(connection, nowMs = Date.now()) {
+  const candidates = [];
+  if (connection?.rateLimitedUntil && isAccountUnavailable(connection.rateLimitedUntil)) {
+    candidates.push(new Date(connection.rateLimitedUntil).getTime());
+  }
+  const all = connection?.[MODEL_LOCK_ALL];
+  if (all && new Date(all).getTime() > nowMs) candidates.push(new Date(all).getTime());
+  return candidates.length > 0 ? Math.max(...candidates) : null;
+}
+
 // Best-effort bookkeeping; must never break the cycle.
 async function persistResult(deps, providerId, patch) {
   try {
@@ -87,6 +101,20 @@ export async function revalidateProvider(providerId, deps = createDefaultDeps(),
     if (conns.length === 0) {
       await persistResult(deps, providerId, { lastRunAt: Date.now(), lastStatus: "error", lastError: "no active connections" });
       return { providerId, status: "error", error: "no active connections" };
+    }
+
+    // Every account is in an account-level cooldown: probing now would only
+    // hammer upstream and (with markAccountUnavailable) extend the lock. Retry
+    // right after the earliest lock expires instead of a full interval.
+    const lockExpiries = conns.map((c) => accountLockUntil(c)).filter(Boolean);
+    if (lockExpiries.length === conns.length) {
+      const earliest = Math.min(...lockExpiries);
+      await persistResult(deps, providerId, {
+        lastRunAt: Date.now(),
+        lastStatus: "locked",
+        lastError: `all accounts locked until ${new Date(earliest).toISOString()}`,
+      });
+      return { providerId, status: "locked", retryAtMs: earliest + C.lockedRetryBufferMs };
     }
 
     // Credential gate: test connections in priority order; models are pinged
@@ -138,7 +166,10 @@ export async function runProviderRevalidationTick(deps = createDefaultDeps(), st
       const { intervalMinutes } = readProviderConfig(settings, providerId);
       console.log(`[Revalidate] ${providerId}: running (every ${intervalMinutes}min)`);
       const res = await revalidateProvider(providerId, deps, state);
-      state.nextRunAt[providerId] = Date.now() + intervalMinutes * 60_000;
+      const baseMs = res.retryAtMs
+        ? Math.max(C.lockedRetryMinMs, res.retryAtMs - Date.now())
+        : intervalMinutes * 60_000;
+      state.nextRunAt[providerId] = Date.now() + baseMs + Math.floor(Math.random() * C.jitterMs);
       if (res.status === "ok") console.log(`[Revalidate] ${providerId}: ok`);
       else console.warn(`[Revalidate] ${providerId}: ${res.status} ${res.error || ""}`.trim());
     }

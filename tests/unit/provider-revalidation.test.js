@@ -149,6 +149,55 @@ describe("revalidateProvider", () => {
     expect(res.status).toBe("ok");
   });
 
+  it("skips the cycle entirely while every account is locked", async () => {
+    const lockedUntil = new Date(Date.now() + 120_000).toISOString();
+    mocks.getProviderConnections.mockResolvedValue([
+      { id: "c1", rateLimitedUntil: lockedUntil },
+      { id: "c2", modelLock___all: lockedUntil },
+    ]);
+    const { revalidateProvider } = await import("../../src/shared/services/providerRevalidation.js");
+
+    const res = await revalidateProvider("openai", mocks, freshState());
+
+    expect(res.status).toBe("locked");
+    expect(res.retryAtMs).toBeGreaterThan(Date.now());
+    expect(mocks.testSingleConnection).not.toHaveBeenCalled();
+    expect(mocks.revalidateProviderModels).not.toHaveBeenCalled();
+    expect(mocks.updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      providerRevalidation: expect.objectContaining({
+        openai: expect.objectContaining({ lastStatus: "locked" }),
+      }),
+    }));
+  });
+
+  it("still probes when only some accounts are locked", async () => {
+    mocks.getProviderConnections.mockResolvedValue([
+      { id: "c1", rateLimitedUntil: new Date(Date.now() + 120_000).toISOString() },
+      { id: "c2" },
+    ]);
+    mocks.testSingleConnection.mockResolvedValue({ valid: true });
+    mocks.revalidateProviderModels.mockResolvedValue({ results: [{ ok: true }] });
+    const { revalidateProvider } = await import("../../src/shared/services/providerRevalidation.js");
+
+    const res = await revalidateProvider("openai", mocks, freshState());
+
+    expect(res.status).toBe("ok");
+    expect(mocks.testSingleConnection).toHaveBeenCalledWith("c1");
+  });
+
+  it("ignores per-model locks (only one model is affected)", async () => {
+    mocks.getProviderConnections.mockResolvedValue([
+      { id: "c1", "modelLock_xai/grok-4.6": new Date(Date.now() + 120_000).toISOString() },
+    ]);
+    mocks.testSingleConnection.mockResolvedValue({ valid: true });
+    mocks.revalidateProviderModels.mockResolvedValue({ results: [{ ok: true }] });
+    const { revalidateProvider } = await import("../../src/shared/services/providerRevalidation.js");
+
+    const res = await revalidateProvider("openai", mocks, freshState());
+
+    expect(res.status).toBe("ok");
+  });
+
   it("clears the in-flight guard even when the cycle throws", async () => {
     mocks.getProviderConnections.mockRejectedValue(new Error("db down"));
     const state = freshState();
@@ -177,7 +226,9 @@ describe("runProviderRevalidationTick", () => {
 
     await runProviderRevalidationTick(mocks, state);
     expect(mocks.revalidateProviderModels).toHaveBeenCalledTimes(1);
+    // interval + jitter window
     expect(state.nextRunAt.openai).toBeGreaterThan(Date.now() + 29 * 60_000);
+    expect(state.nextRunAt.openai).toBeLessThanOrEqual(Date.now() + 30 * 60_000 + 15_000);
 
     await runProviderRevalidationTick(mocks, state);
     expect(mocks.revalidateProviderModels).toHaveBeenCalledTimes(1); // not due anymore

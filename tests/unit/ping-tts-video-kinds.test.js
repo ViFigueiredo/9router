@@ -34,7 +34,22 @@ describe("pingModelByKind kind routing (tts / video)", () => {
     const [url, init] = global.fetch.mock.calls[0];
     expect(String(url)).toBe("http://127.0.0.1:20128/api/v1/audio/speech");
     expect(init.method).toBe("POST");
+    expect(init.headers["x-9r-probe"]).toBe("1");
     expect(JSON.parse(init.body)).toEqual({ model: "openai/tts-1", input: "test" });
+  });
+
+  it("marks chat probes so routing does not lock the account", async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { role: "assistant", content: "ok" }, finish_reason: "stop" }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    const { pingModelByKind } = await import("../../src/app/api/models/test/ping.js");
+
+    const result = await pingModelByKind("openai/gpt-5.4", "llm", "http://127.0.0.1:20128", 5000);
+
+    expect(result.ok).toBe(true);
+    const [url, init] = global.fetch.mock.calls[0];
+    expect(String(url)).toBe("http://127.0.0.1:20128/api/v1/chat/completions");
+    expect(init.headers["x-9r-probe"]).toBe("1");
   });
 
   it("fails tts when the provider errors", async () => {
