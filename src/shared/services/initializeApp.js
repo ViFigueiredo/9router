@@ -113,6 +113,13 @@ async function runHeavyStartup() {
       .catch((e) => console.log("[AutoPing] scheduler start failed:", e.message));
   }
 
+  if (hasProviderRevalidationEnabled(settings)) {
+    // Keep the module (and its provider/test-utils graph) out of memory when nobody opted in.
+    import("@/shared/services/providerRevalidation")
+      .then(({ startProviderRevalidation }) => startProviderRevalidation())
+      .catch((e) => console.log("[Revalidate] scheduler start failed:", e.message));
+  }
+
   // Proactive OAuth token refresh (e.g. grok-cli ~6h TTL). Module is idempotent
   // and also started from custom-server.js when that entry is used.
   import("@/sse/services/backgroundTokenRefresh.js")
@@ -123,6 +130,10 @@ async function runHeavyStartup() {
 function hasQuotaAutoPingEnabled(settings) {
   return [settings?.claudeAutoPing, settings?.codexAutoPing]
     .some((config) => Object.values(config?.connections || {}).some(Boolean));
+}
+
+function hasProviderRevalidationEnabled(settings) {
+  return Object.values(settings?.providerRevalidation || {}).some((cfg) => cfg?.enabled === true);
 }
 
 async function autoStartMitm(settings) {
