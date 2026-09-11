@@ -68,6 +68,7 @@ export default function ProviderDetailPage() {
   const [providerStickyLimit, setProviderStickyLimit] = useState("");
   const [thinkingMode, setThinkingMode] = useState("auto");
   const [autoPing, setAutoPing] = useState({ enabled: false, connections: {} });
+  const [revalidation, setRevalidation] = useState({ enabled: false, intervalMinutes: 30, lastRunAt: null, lastStatus: null, lastError: null });
   const [suggestedModels, setSuggestedModels] = useState([]);
   const [liveModels, setLiveModels] = useState([]);
   const [kiloFreeModels, setKiloFreeModels] = useState([]);
@@ -325,6 +326,14 @@ export default function ProviderDetailPage() {
       const autoPingSettingsKey = AUTO_PING_SETTINGS_KEYS[providerId];
       const apCfg = autoPingSettingsKey ? settingsData[autoPingSettingsKey] || {} : {};
       setAutoPing({ enabled: apCfg.enabled === true, connections: apCfg.connections || {} });
+      const rvCfg = (settingsData.providerRevalidation || {})[providerId] || {};
+      setRevalidation({
+        enabled: rvCfg.enabled === true,
+        intervalMinutes: rvCfg.intervalMinutes || 30,
+        lastRunAt: rvCfg.lastRunAt || null,
+        lastStatus: rvCfg.lastStatus || null,
+        lastError: rvCfg.lastError || null,
+      });
       if (nodesRes.ok) {
         let node = (nodesData.nodes || []).find((entry) => entry.id === providerId) || null;
 
@@ -409,6 +418,38 @@ export default function ProviderDetailPage() {
   const handleStickyLimitChange = (value) => {
     setProviderStickyLimit(value);
     saveProviderStrategy("round-robin", value);
+  };
+
+  const saveRevalidationConfig = async ({ enabled, intervalMinutes }) => {
+    try {
+      const settingsRes = await fetch("/api/settings", { cache: "no-store" });
+      const settingsData = settingsRes.ok ? await settingsRes.json() : {};
+      const current = settingsData.providerRevalidation || {};
+      const prev = current[providerId] || {};
+      await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          providerRevalidation: { ...current, [providerId]: { ...prev, enabled, intervalMinutes } },
+        }),
+      });
+    } catch (error) {
+      console.log("Error saving revalidation config:", error);
+    }
+  };
+
+  const handleRevalidationToggle = () => {
+    setRevalidation((prev) => {
+      const next = { ...prev, enabled: !prev.enabled };
+      saveRevalidationConfig(next);
+      return next;
+    });
+  };
+
+  const handleRevalidationIntervalChange = (value) => {
+    const intervalMinutes = Number(value);
+    setRevalidation((prev) => ({ ...prev, intervalMinutes }));
+    if (revalidation.enabled) saveRevalidationConfig({ enabled: true, intervalMinutes });
   };
 
   const saveThinkingConfig = async (mode) => {
@@ -1585,6 +1626,30 @@ export default function ProviderDetailPage() {
                   </div>
                 )}
               </div>
+              {/* Auto-revalidation: periodic credential + model check */}
+              {connections.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-text-muted font-medium">Auto-revalidate</span>
+                  <Toggle checked={revalidation.enabled} onChange={handleRevalidationToggle} />
+                  {revalidation.enabled && (
+                    <select
+                      value={String(revalidation.intervalMinutes)}
+                      onChange={(e) => handleRevalidationIntervalChange(e.target.value)}
+                      title="Re-checks this provider's connections and models periodically (max 60min keeps health badges fresh)"
+                      className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none"
+                    >
+                      {[5, 10, 15, 30, 60].map((m) => (
+                        <option key={m} value={m}>{`Every ${m} min`}</option>
+                      ))}
+                    </select>
+                  )}
+                  {revalidation.enabled && revalidation.lastRunAt && (
+                    <span className="text-[10px] text-text-muted">
+                      {`last: ${new Date(revalidation.lastRunAt).toLocaleTimeString()} · ${revalidation.lastStatus || "?"}`}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
