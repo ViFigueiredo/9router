@@ -1,12 +1,9 @@
 "use client";
 
 import { createContext, useContext, useEffect, useSyncExternalStore } from "react";
+import { usePathname } from "next/navigation";
 import { brandingCssVars } from "@/shared/utils/brandColor";
-
-export const DEFAULT_TITLE = "9Router - AI Infrastructure Management";
-export const DEFAULT_FAVICON = "/favicon.svg";
-// Fired by the settings page after saving so the change applies without a reload.
-export const BRANDING_EVENT = "9r:branding-updated";
+import { BRANDING_EVENT, DEFAULT_FAVICON, DEFAULT_TITLE, TITLE_SUFFIX } from "@/shared/constants/branding";
 
 const CSS_VAR_KEYS = [
   ...[50, 100, 200, 300, 400, 500, 600, 700, 800, 900].map((s) => `--color-brand-${s}`),
@@ -15,6 +12,10 @@ const CSS_VAR_KEYS = [
   "--shadow-focus",
   "--shadow-warm",
 ];
+
+// Marks the icon link this module creates, so it can be distinguished from the one
+// the framework renders (and removed once the framework's exists).
+const MANAGED_ATTR = "data-branding-icon";
 
 // Module-level store: branding is applied to the live document (CSS vars, title,
 // favicon) and read through useSyncExternalStore, so no component effect has to
@@ -46,16 +47,27 @@ export function applyBranding(branding) {
   }
 
   const name = String(appName).trim();
-  document.title = name ? `${name} - AI Infrastructure Management` : DEFAULT_TITLE;
+  document.title = name ? `${name} - ${TITLE_SUFFIX}` : DEFAULT_TITLE;
 
   const href = faviconDataUrl || DEFAULT_FAVICON;
-  let link = document.querySelector('link[rel="icon"]');
-  if (!link) {
-    link = document.createElement("link");
+  const links = [...document.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"]')];
+  // The framework renders its own icon link from generateMetadata; prefer that one
+  // and drop the link we may have created before hydration, so the document keeps
+  // exactly one icon tag instead of two competing ones.
+  const owned = links.find((link) => !link.hasAttribute(MANAGED_ATTR));
+  const managed = links.filter((link) => link.hasAttribute(MANAGED_ATTR));
+  if (owned) {
+    owned.setAttribute("href", href);
+    for (const extra of managed) extra.remove();
+  } else if (managed.length > 0) {
+    for (const link of managed) link.setAttribute("href", href);
+  } else {
+    const link = document.createElement("link");
     link.setAttribute("rel", "icon");
+    link.setAttribute(MANAGED_ATTR, "1");
+    link.setAttribute("href", href);
     document.head.appendChild(link);
   }
-  link.setAttribute("href", href);
 }
 
 export function setBrandingState(next) {
@@ -72,6 +84,13 @@ export function useBranding() {
 
 export default function BrandingProvider({ children }) {
   const branding = useSyncExternalStore(subscribeBranding, getBrandingSnapshot, getBrandingSnapshot);
+  const pathname = usePathname();
+
+  // Re-assert after every navigation: React reconciles the metadata tags it owns
+  // (title/favicon) on route changes, so the applied values must be re-pushed.
+  useEffect(() => {
+    applyBranding(getBrandingSnapshot());
+  }, [pathname]);
 
   useEffect(() => {
     let cancelled = false;

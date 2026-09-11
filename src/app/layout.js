@@ -5,6 +5,7 @@ import "material-symbols/outlined.css";
 import "./globals.css";
 import { ThemeProvider } from "@/shared/components/ThemeProvider";
 import BrandingProvider from "@/shared/components/BrandingProvider";
+import { DEFAULT_FAVICON, DEFAULT_TITLE, TITLE_SUFFIX } from "@/shared/constants/branding";
 import "@/lib/network/initOutboundProxy"; // Auto-initialize outbound proxy env
 import "@/shared/services/bootstrap"; // Auto-run initializeApp (watchdog, auto-resume tunnel)
 import { initConsoleLogCapture } from "@/lib/consoleLogBuffer";
@@ -18,13 +19,33 @@ const inter = Inter({
   variable: "--font-inter",
 });
 
-export const metadata = {
-  title: "9Router - AI Infrastructure Management",
-  description: "One endpoint for all your AI providers. Manage keys, monitor usage, and scale effortlessly.",
-  icons: {
-    icon: "/favicon.svg",
-  },
-};
+const APP_TITLE = DEFAULT_TITLE;
+const APP_DESCRIPTION = "One endpoint for all your AI providers. Manage keys, monitor usage, and scale effortlessly.";
+
+// Branding is derived from settings so Next itself renders the configured title and
+// favicon. Mutating document.head from the client is not enough: React reconciles
+// the metadata tags on every navigation and would restore the static values.
+export async function generateMetadata() {
+  const fallback = {
+    title: APP_TITLE,
+    description: APP_DESCRIPTION,
+    icons: { icon: DEFAULT_FAVICON },
+  };
+  try {
+    const { getSettings } = await import("@/lib/db/repos/settingsRepo.js");
+    const settings = await getSettings();
+    const branding = settings?.branding || {};
+    const name = String(branding.appName || "").trim();
+    return {
+      title: name ? `${name} - ${TITLE_SUFFIX}` : APP_TITLE,
+      description: APP_DESCRIPTION,
+      icons: { icon: branding.faviconDataUrl || DEFAULT_FAVICON },
+    };
+  } catch {
+    // Never let a settings read break rendering (e.g. during a cold build).
+    return fallback;
+  }
+}
 
 export const viewport = {
   themeColor: "#0a0a0a",
