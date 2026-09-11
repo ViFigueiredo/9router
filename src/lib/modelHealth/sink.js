@@ -44,7 +44,37 @@ export async function recordObservation({ provider, model, kind = "llm", ok, sta
         : (status != null
           ? { at: ts, status, message: String(errorText || "").slice(0, 240) }
           : (base.lastError || null));
-      return { ...base, kind, events, lastPing, lastError };
+      // Accumulated counters for the global ranking (src/lib/modelHealth/ranking.js).
+      // Only ok and model-fatal outcomes count: 401/403/429 are account/connection
+      // concerns, and counting them would rank a model by its account's state.
+      const prevStats = base.stats || {};
+      const stats = {
+        ok: prevStats.ok || 0,
+        fail: prevStats.fail || 0,
+        ttftSumMs: prevStats.ttftSumMs || 0,
+        ttftCount: prevStats.ttftCount || 0,
+        tpsSum: prevStats.tpsSum || 0,
+        tpsCount: prevStats.tpsCount || 0,
+        firstSeenAt: prevStats.firstSeenAt || ts,
+        lastOkAt: prevStats.lastOkAt || null,
+        lastFailAt: prevStats.lastFailAt || null,
+      };
+      if (ok) {
+        stats.ok += 1;
+        stats.lastOkAt = ts;
+        if (typeof pingTtft === "number") {
+          stats.ttftSumMs += pingTtft;
+          stats.ttftCount += 1;
+        }
+        if (typeof tps === "number" && tps > 0) {
+          stats.tpsSum += tps;
+          stats.tpsCount += 1;
+        }
+      } else if (fatal) {
+        stats.fail += 1;
+        stats.lastFailAt = ts;
+      }
+      return { ...base, kind, events, lastPing, lastError, stats };
     });
 
     // Recompute the provider-wide snapshot only for this provider (cheap: one kv row).

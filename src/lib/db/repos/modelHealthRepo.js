@@ -18,6 +18,28 @@ export async function getModelHealthByProvider(provider) {
   return row ? (parseJson(row.value, null) || {}) : {};
 }
 
+// Zero the accumulated ranking counters (per model, or every model of a provider),
+// leaving the 1h event window and tags untouched. stats=null means "no samples".
+export async function resetModelStats(provider, modelId = null) {
+  if (!provider) return false;
+  const db = await getAdapter();
+  let changed = false;
+  db.transaction(() => {
+    const row = db.get(`SELECT value FROM kv WHERE scope = ? AND key = ?`, [MODEL_HEALTH_SCOPE, provider]);
+    if (!row) return;
+    const map = parseJson(row.value, null) || {};
+    const targets = modelId ? (map[modelId] ? [modelId] : []) : Object.keys(map);
+    if (targets.length === 0) return;
+    for (const id of targets) map[id] = { ...map[id], stats: null };
+    db.run(
+      `INSERT INTO kv(scope, key, value) VALUES(?, ?, ?) ON CONFLICT(scope, key) DO UPDATE SET value = excluded.value`,
+      [MODEL_HEALTH_SCOPE, provider, stringifyJson(map)]
+    );
+    changed = true;
+  });
+  return changed;
+}
+
 // Atomic read-merge-write inside a transaction (no JS yield mid-transaction).
 // updater(prev) returns the next ModelHealth, or null to delete the entry.
 export async function updateModelHealth(provider, modelId, updater) {

@@ -121,4 +121,39 @@ describe("modelHealth sink", () => {
     expect(snap["m2"].tpsAvg).toBeNull();
     expect(snap["m2"].ttftAvgMs).toBe(150);
   });
+
+  it("accumulates ranking counters from ok and model-fatal outcomes only", async () => {
+    await sink.recordObservation({ provider: "rankprov", model: "m1", ok: true, status: 200, ttftMs: 200, tps: 40, isPing: true });
+    await sink.recordObservation({ provider: "rankprov", model: "m1", ok: true, status: 200, ttftMs: 400, tps: 60, isPing: true });
+    await sink.recordObservation({ provider: "rankprov", model: "m1", ok: false, status: 502, isPing: true }); // fatal
+    await sink.recordObservation({ provider: "rankprov", model: "m1", ok: false, status: 429, isPing: true }); // account: ignored
+    await sink.recordObservation({ provider: "rankprov", model: "m1", ok: false, status: 401 }); // account: ignored
+
+    const mh = await repo.getModelHealthByProvider("rankprov");
+    const { stats } = mh["m1"];
+    expect(stats.ok).toBe(2);
+    expect(stats.fail).toBe(1);
+    expect(stats.ttftCount).toBe(2);
+    expect(stats.ttftSumMs).toBe(600);
+    expect(stats.tpsCount).toBe(2);
+    expect(stats.tpsSum).toBe(100);
+    expect(stats.firstSeenAt).toBeTypeOf("number");
+    expect(stats.lastOkAt).toBeTypeOf("number");
+    expect(stats.lastFailAt).toBeTypeOf("number");
+  });
+
+  it("resets accumulated counters without touching the event window", async () => {
+    await sink.recordObservation({ provider: "resetprov", model: "m1", ok: true, status: 200, ttftMs: 100, isPing: true });
+    await sink.recordObservation({ provider: "resetprov", model: "m2", ok: true, status: 200, ttftMs: 100, isPing: true });
+
+    await repo.resetModelStats("resetprov", "m1");
+    let mh = await repo.getModelHealthByProvider("resetprov");
+    expect(mh["m1"].stats).toBeNull();
+    expect(mh["m1"].events.length).toBe(1); // window preserved
+    expect(mh["m2"].stats.ok).toBe(1);      // other model untouched
+
+    await repo.resetModelStats("resetprov");
+    mh = await repo.getModelHealthByProvider("resetprov");
+    expect(mh["m2"].stats).toBeNull();
+  });
 });
