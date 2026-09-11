@@ -1,3 +1,14 @@
+# v0.5.73 (2026-09-11)
+
+## Features
+- **Ranking LLM**: new dashboard module (above Usage) ranking providers and models from accumulated validate counters — reliability 60% / speed 30% / recency 10%, same-kind normalization, combo membership with position, filters, and per-model/provider counter reset
+- **Combos**: reclassify a combo's fallback order by the global ranking, with per-model position locks (honored at runtime too, so a locked model is never deprioritized by health) and optional per-combo auto reorder after each revalidation cycle
+- **Personalization**: configure app name, logo, favicon and brand color in Settings — the full brand shade scale, hover, focus ring and warm shadow are derived from the picked color
+- **Dashboard**: removed the 9English sidebar entry
+
+## Fixes
+- **Usage**: the Details tab now explains that request-detail capture is off and links to the Observability setting instead of showing a bare empty table
+
 # v0.5.72 (2026-09-11)
 
 ## Fixes
