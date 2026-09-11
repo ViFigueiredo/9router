@@ -125,7 +125,15 @@ export default function Sidebar({ onClose }) {
         {/* Logo */}
         <div className="px-6 py-4 flex flex-col gap-2">
           <Link href="/dashboard" className="flex items-center gap-3">
-            <div className="flex items-center justify-center size-9 rounded-[10px] bg-gradient-to-br from-brand-500 to-brand-700 shadow-[var(--shadow-warm)] overflow-hidden">
+            <div
+              className={cn(
+                "flex items-center justify-center size-9 rounded-[10px] overflow-hidden",
+                // The brand gradient is the fallback mark. With a configured logo it
+                // would tint the image and show through transparent pixels, so it is
+                // only drawn when no logo is set.
+                !branding.logoDataUrl && "bg-gradient-to-br from-brand-500 to-brand-700 shadow-[var(--shadow-warm)]"
+              )}
+            >
               {branding.logoDataUrl ? (
                 <span
                   role="img"
