@@ -102,6 +102,16 @@ export const MODEL_TEST_BATCH = {
   pingTimeoutMs: 30_000,
 };
 
+// Provider/model auto-revalidation: periodic background credential + model ping.
+export const PROVIDER_REVALIDATION_CONFIG = {
+  tickIntervalMs: 60_000,
+  minIntervalMinutes: 5,
+  // Must stay <= the model-health window (1h) so a healthy badge never lapses
+  // to "unknown" between two runs (the classifier prunes events past the window).
+  maxIntervalMinutes: 60,
+  defaultIntervalMinutes: 30,
+};
+
 // Re-export from providers.js for backward compatibility
 export {
   FREE_PROVIDERS,
