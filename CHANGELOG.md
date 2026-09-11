@@ -1,3 +1,8 @@
+# v0.5.75 (2026-09-11)
+
+## Fixes
+- **Personalization**: a configured logo is no longer drawn over the brand-colored gradient plate — the gradient and its warm shadow now render only as the fallback mark when no logo is set, so transparent logos are not tinted
+
 # v0.5.74 (2026-09-11)
 
 ## Features
