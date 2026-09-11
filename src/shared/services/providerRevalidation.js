@@ -162,16 +162,29 @@ export async function runProviderRevalidationTick(deps = createDefaultDeps(), st
   try {
     const settings = await deps.getSettings();
     scheduleFrom(settings, state);
+    let ranAny = false;
     for (const providerId of computeDueProviderIds(settings, state)) {
       const { intervalMinutes } = readProviderConfig(settings, providerId);
       console.log(`[Revalidate] ${providerId}: running (every ${intervalMinutes}min)`);
       const res = await revalidateProvider(providerId, deps, state);
+      ranAny = true;
       const baseMs = res.retryAtMs
         ? Math.max(C.lockedRetryMinMs, res.retryAtMs - Date.now())
         : intervalMinutes * 60_000;
       state.nextRunAt[providerId] = Date.now() + baseMs + Math.floor(Math.random() * C.jitterMs);
       if (res.status === "ok") console.log(`[Revalidate] ${providerId}: ok`);
       else console.warn(`[Revalidate] ${providerId}: ${res.status} ${res.error || ""}`.trim());
+    }
+
+    // Combos that opted into auto ordering follow the fresh ranking (best-effort).
+    if (ranAny) {
+      try {
+        const { autoReorderCombos } = await import("@/lib/modelHealth/autoReorder.js");
+        const { reordered } = await autoReorderCombos();
+        if (reordered.length > 0) console.log(`[Revalidate] reordered combos: ${reordered.join(", ")}`);
+      } catch (e) {
+        console.warn("[Revalidate] auto reorder failed:", e?.message || e);
+      }
     }
   } catch (e) {
     console.warn("[Revalidate] tick error:", e?.message || e);

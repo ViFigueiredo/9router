@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getComboById, updateCombo, deleteCombo, getComboByName } from "@/lib/localDb";
 import { resetComboRotation } from "open-sse/services/combo.js";
+import { getComboOrdering, setComboOrdering, renameComboOrdering, clearComboOrdering } from "@/lib/comboOrdering.js";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -53,6 +54,19 @@ export async function PUT(request, { params }) {
     if (prev?.name) resetComboRotation(prev.name);
     if (combo.name && combo.name !== prev?.name) resetComboRotation(combo.name);
 
+    // Ordering is keyed by name and locks must reference models that still exist.
+    if (prev?.name && combo.name !== prev.name) {
+      await renameComboOrdering(prev.name, combo.name).catch(() => {});
+    }
+    try {
+      const ordering = await getComboOrdering(combo.name);
+      const models = Array.isArray(combo.models) ? combo.models : [];
+      const kept = ordering.lockedModels.filter((m) => models.includes(m));
+      if (kept.length !== ordering.lockedModels.length) {
+        await setComboOrdering(combo.name, { lockedModels: kept });
+      }
+    } catch { /* ordering cleanup is best-effort */ }
+
     return NextResponse.json(combo);
   } catch (error) {
     console.log("Error updating combo:", error);
@@ -72,6 +86,7 @@ export async function DELETE(request, { params }) {
     }
 
     if (prev?.name) resetComboRotation(prev.name);
+    if (prev?.name) await clearComboOrdering(prev.name).catch(() => {});
     
     return NextResponse.json({ success: true });
   } catch (error) {

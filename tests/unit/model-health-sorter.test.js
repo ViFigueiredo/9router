@@ -103,6 +103,30 @@ describe("reorderModelsByHealth", () => {
     expect(out).toEqual(["openai/gpt-stale", "openai/gpt-4o"]);
   });
 
+  it("keeps a locked model at its exact index even when it is failing", async () => {
+    const modelHealth = {
+      openai: {
+        "gpt-dead": {
+          kind: "llm",
+          events: [fresh(null, false, true), fresh(null, false, true)],
+          lastPing: null,
+          tag: "failing", tagComputedAt: now,
+        },
+      },
+    };
+    const deps = { getModelInfo: info("openai", ""), readProvider: readProvider(modelHealth) };
+
+    const unlocked = await reorderModelsByHealth(["openai/gpt-dead", "openai/gpt-4o", "openai/other"], deps);
+    expect(unlocked[0]).toBe("openai/gpt-4o"); // failing pushed to the tail
+
+    const locked = await reorderModelsByHealth(
+      ["openai/gpt-dead", "openai/gpt-4o", "openai/other"],
+      { ...deps, locked: ["openai/gpt-dead"] },
+    );
+    expect(locked[0]).toBe("openai/gpt-dead"); // immovable
+    expect(locked.slice(1).sort()).toEqual(["openai/gpt-4o", "openai/other"]);
+  });
+
   it("returns the list unchanged on empty health or errors", async () => {
     const deps = { getModelInfo: info("openai", ""), readProvider: readProvider({}) };
     const input = ["openai/a", "openai/b"];

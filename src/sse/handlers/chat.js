@@ -126,6 +126,7 @@ export async function handleChat(request, clientRawRequest = null) {
     }
 
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
+    const comboLockedModels = (settings.comboOrdering || {})[modelStr]?.lockedModels || [];
     log.info("CHAT", `Combo "${modelStr}" with ${augmentedModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
     return handleComboChat({
       body,
@@ -138,7 +139,9 @@ export async function handleChat(request, clientRawRequest = null) {
       comboName: modelStr,
       comboStrategy,
       comboStickyLimit,
-      healthSorter: reorderModelsByHealth,
+      // Position-locked models are immovable: passed through deps so the engine
+      // signature stays unchanged.
+      healthSorter: (models) => reorderModelsByHealth(models, { locked: comboLockedModels }),
     });
   }
 

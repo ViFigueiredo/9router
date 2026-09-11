@@ -51,6 +51,9 @@ export default function CombosPage() {
   const [editingCombo, setEditingCombo] = useState(null);
   const [activeProviders, setActiveProviders] = useState([]);
   const [comboStrategies, setComboStrategies] = useState({});
+  const [comboOrdering, setComboOrdering] = useState({});
+  const [scores, setScores] = useState({});
+  const [reclassifying, setReclassifying] = useState(null);
   const [capacityAdapter, setCapacityAdapter] = useState(EMPTY_CAPACITY_ADAPTER);
   const { getCaps } = useModelCaps();
   const [confirmState, setConfirmState] = useState(null);
@@ -62,14 +65,16 @@ export default function CombosPage() {
 
   const fetchData = async () => {
     try {
-      const [combosRes, providersRes, settingsRes] = await Promise.all([
+      const [combosRes, providersRes, settingsRes, rankingRes] = await Promise.all([
         fetch("/api/combos"),
         fetch("/api/providers"),
         fetch("/api/settings"),
+        fetch("/api/ranking", { cache: "no-store" }),
       ]);
       const combosData = await combosRes.json();
       const providersData = await providersRes.json();
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
+      const rankingData = rankingRes.ok ? await rankingRes.json() : {};
       
       // Only LLM combos here - webSearch/webFetch combos belong to media-providers/web
       if (combosRes.ok) setCombos((combosData.combos || []).filter(c => !c.kind || c.kind === "llm"));
@@ -77,6 +82,13 @@ export default function CombosPage() {
         setActiveProviders(providersData.connections || []);
       }
       setComboStrategies(settingsData.comboStrategies || {});
+      setComboOrdering(settingsData.comboOrdering || {});
+      // "provider/model" → ranking score, used to preview each model's standing.
+      const scoreMap = {};
+      for (const entry of rankingData.models || []) {
+        scoreMap[`${entry.provider}/${entry.model}`] = entry.rank.score;
+      }
+      setScores(scoreMap);
       const rawAdapter = settingsData.capacityAdapter || {};
       const normalized = {};
       for (const cap of CAPACITY_ADAPTER_CAPS) {
@@ -87,6 +99,52 @@ export default function CombosPage() {
       console.log("Error fetching data:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Position locks + auto ordering live in settings, keyed by combo name (the
+  // same key the runtime resolves). Writes go straight through so a lock is
+  // never lost by closing the modal.
+  const handleSetOrdering = async (combo, patch) => {
+    const prev = comboOrdering[combo.name] || { lockedModels: [], autoReorder: false };
+    const next = { ...prev, ...patch };
+    setComboOrdering((map) => ({ ...map, [combo.name]: next }));
+    try {
+      const res = await fetch(`/api/combos/${combo.id}/ordering`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        setComboOrdering((map) => ({ ...map, [combo.name]: saved }));
+      }
+    } catch (error) {
+      console.log("Error saving combo ordering:", error);
+      setComboOrdering((map) => ({ ...map, [combo.name]: prev }));
+    }
+  };
+
+  const handleToggleLock = (combo, model) => {
+    const current = comboOrdering[combo.name]?.lockedModels || [];
+    const next = current.includes(model)
+      ? current.filter((m) => m !== model)
+      : [...current, model];
+    return handleSetOrdering(combo, { lockedModels: next });
+  };
+
+  const handleReclassify = async (combo) => {
+    setReclassifying(combo.id);
+    try {
+      const res = await fetch(`/api/combos/${combo.id}/reorder`, { method: "POST" });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(body.models)) {
+        setCombos((prev) => prev.map((c) => (c.id === combo.id ? { ...c, models: body.models } : c)));
+      }
+    } catch (error) {
+      console.log("Error reclassifying combo:", error);
+    } finally {
+      setReclassifying(null);
     }
   };
 
@@ -240,6 +298,10 @@ export default function CombosPage() {
               onDelete={() => handleDelete(combo.id)}
               strategy={comboStrategies[combo.name] || {}}
               onSetStrategy={(patch) => handleSetComboStrategy(combo.name, patch)}
+              ordering={comboOrdering[combo.name] || { lockedModels: [], autoReorder: false }}
+              onSetOrdering={(patch) => handleSetOrdering(combo, patch)}
+              onReclassify={() => handleReclassify(combo)}
+              reclassifying={reclassifying === combo.id}
             />
           ))}
         </div>
@@ -272,6 +334,9 @@ export default function CombosPage() {
           onClose={() => setEditingCombo(null)}
           onSave={(data) => handleUpdate(editingCombo.id, data)}
           activeProviders={activeProviders}
+          scores={scores}
+          lockedModels={comboOrdering[editingCombo.name]?.lockedModels || []}
+          onToggleLock={(model) => handleToggleLock(editingCombo, model)}
         />
       )}
 
@@ -294,11 +359,12 @@ const STRATEGY_OPTIONS = [
   { value: "fusion", label: "Fusion — panel + judge" },
 ];
 
-function ComboCard({ combo, getCaps, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy }) {
+function ComboCard({ combo, getCaps, activeProviders = [], copied, onCopy, onEdit, onDelete, strategy = {}, onSetStrategy, ordering = { lockedModels: [], autoReorder: false }, onSetOrdering, onReclassify, reclassifying = false }) {
   const [showJudgeSelect, setShowJudgeSelect] = useState(false);
   const current = strategy.fallbackStrategy || "fallback";
   const judge = strategy.judgeModel || "";
   const isFusion = current === "fusion";
+  const lockedCount = ordering.lockedModels?.length || 0;
 
   return (
     <Card padding="sm" className="group">
@@ -360,6 +426,37 @@ function ComboCard({ combo, getCaps, activeProviders = [], copied, onCopy, onEdi
               onChange={(e) => onSetStrategy({ fallbackStrategy: e.target.value })}
               selectClassName="py-1.5 text-xs"
             />
+          </div>
+
+          {/* Ranking-driven ordering: locks + optional auto reorder */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onReclassify}
+              disabled={reclassifying}
+              title="Reorder this combo by the global model ranking (locked models keep their position)"
+              className="inline-flex items-center gap-1 rounded border border-border px-2 py-1.5 text-xs text-text-muted transition-colors hover:border-primary hover:text-primary disabled:opacity-50"
+            >
+              <span className={`material-symbols-outlined text-[16px] ${reclassifying ? "animate-spin" : ""}`}>
+                {reclassifying ? "progress_activity" : "sort"}
+              </span>
+              Reclassify
+            </button>
+            <label
+              className="flex items-center gap-1.5 text-[11px] text-text-muted"
+              title="Reclassify automatically after every revalidation cycle"
+            >
+              Auto
+              <Toggle checked={ordering.autoReorder === true} onChange={() => onSetOrdering({ autoReorder: !ordering.autoReorder })} />
+            </label>
+            {lockedCount > 0 && (
+              <span
+                className="inline-flex items-center gap-0.5 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+                title={`${lockedCount} model(s) locked in place`}
+              >
+                <span className="material-symbols-outlined text-[12px]">lock</span>
+                {lockedCount}
+              </span>
+            )}
           </div>
 
           <div className="grid grid-cols-3 gap-1 sm:flex">
@@ -552,7 +649,7 @@ function CapacityAdapterCap({ cap, entry, onChange, activeProviders, getCaps }) 
   );
 }
 
-function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMoveDown, onRemove }) {
+function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMoveDown, onRemove, locked = false, score = null, onToggleLock }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -597,6 +694,29 @@ function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMove
 
       {/* Index badge */}
       <span className="text-[10px] font-medium text-text-muted w-3 text-center shrink-0">{index + 1}</span>
+
+      {/* Position lock: keeps this model at this index during reclassification */}
+      {onToggleLock && (
+        <button
+          onClick={onToggleLock}
+          className={`p-0.5 rounded shrink-0 transition-colors ${locked ? "text-primary" : "text-text-muted/40 hover:text-primary"}`}
+          title={locked ? "Unlock position" : "Lock this model's position"}
+        >
+          <span className="material-symbols-outlined text-[13px]">
+            {locked ? "lock" : "lock_open"}
+          </span>
+        </button>
+      )}
+
+      {/* Global ranking score (empty when the model has no samples yet) */}
+      {typeof score === "number" && (
+        <span
+          className="shrink-0 rounded bg-black/5 px-1 py-0.5 font-mono text-[10px] text-text-muted dark:bg-white/5"
+          title="Global ranking score (reliability, speed, recency)"
+        >
+          {score.toFixed(1)}
+        </span>
+      )}
 
       {/* Inline editable model value */}
       {editing ? (
@@ -650,7 +770,7 @@ function ModelItem({ id, index, model, isFirst, isLast, onEdit, onMoveUp, onMove
   );
 }
 
-function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindFilter = null }) {
+function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindFilter = null, scores = {}, lockedModels = [], onToggleLock }) {
   // Initialize state with combo values - key prop on parent handles reset on remount
   const [name, setName] = useState(combo?.name || "");
   const [models, setModels] = useState(combo?.models || []);
@@ -801,6 +921,9 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
                       onMoveUp={() => handleMoveUp(index)}
                       onMoveDown={() => handleMoveDown(index)}
                       onRemove={() => handleRemoveModel(index)}
+                      locked={lockedModels.includes(model)}
+                      score={scores[model]}
+                      onToggleLock={onToggleLock ? () => onToggleLock(model) : undefined}
                     />
                   ))}
                 </div>

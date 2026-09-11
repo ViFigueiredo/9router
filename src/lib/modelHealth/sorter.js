@@ -3,6 +3,7 @@
 import { getModelInfo as getModelInfoDefault } from "@/sse/services/model.js";
 import { getModelHealthByProvider } from "@/lib/db/repos/modelHealthRepo.js";
 import { HEALTH_TAGS, classifyModel } from "./classifier.js";
+import { reorderByRank } from "./comboOrder.js";
 
 const RANK = { [HEALTH_TAGS.OK]: 0, [HEALTH_TAGS.UNKNOWN]: 0, [HEALTH_TAGS.SLOW]: 1, [HEALTH_TAGS.FAILING]: 2 };
 
@@ -13,10 +14,9 @@ export async function reorderModelsByHealth(models, deps = {}) {
 
   try {
     const providerCache = new Map();
-    const ranked = [];
+    const rankByModel = new Map();
 
-    for (let i = 0; i < models.length; i += 1) {
-      const str = models[i];
+    for (const str of models) {
       let rank = 0;
       try {
         const info = await getModelInfo(str);
@@ -39,12 +39,12 @@ export async function reorderModelsByHealth(models, deps = {}) {
       } catch {
         rank = 0; // fail-open: unresolvable models keep their position
       }
-      ranked.push({ str, rank, i });
+      rankByModel.set(str, rank);
     }
 
-    return ranked
-      .sort((a, b) => a.rank - b.rank || a.i - b.i)
-      .map((x) => x.str);
+    // deps.locked (combo position locks) wins over health: a locked model keeps
+    // its exact index instead of being pushed to the tail when it fails.
+    return reorderByRank(models, { locked: deps.locked, rankByModel, maxRank: 2 });
   } catch {
     return models;
   }
