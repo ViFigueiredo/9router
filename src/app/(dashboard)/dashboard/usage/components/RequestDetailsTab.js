@@ -117,6 +117,21 @@ export default function RequestDetailsTab() {
     startDate: "",
     endDate: ""
   });
+  // The requestDetails table is only written while Observability is enabled;
+  // telling "capture is off" apart from "nothing in this period" keeps the
+  // empty state honest. null = not loaded yet.
+  const [observabilityEnabled, setObservabilityEnabled] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/settings", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((settings) => {
+        if (!cancelled && settings) setObservabilityEnabled(settings.enableObservability === true);
+      })
+      .catch(() => { /* falls back to the generic empty state */ });
+    return () => { cancelled = true; };
+  }, []);
 
   const fetchProviders = useCallback(async () => {
     try {
@@ -266,7 +281,7 @@ export default function RequestDetailsTab() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="7" className="p-8 text-center text-text-muted">
+                  <td colSpan="9" className="p-8 text-center text-text-muted">
                     <div className="flex items-center justify-center gap-2">
                       <span className="material-symbols-outlined animate-spin text-[20px]">progress_activity</span>
                       Loading...
@@ -275,8 +290,35 @@ export default function RequestDetailsTab() {
                 </tr>
               ) : details.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="p-8 text-center text-text-muted">
-                    No request details found
+                  <td colSpan="9" className="p-8 text-center text-text-muted">
+                    <div className="mx-auto flex max-w-md flex-col items-center gap-2">
+                      <span className="material-symbols-outlined text-[22px]">
+                        {observabilityEnabled === false ? "visibility_off" : "inbox"}
+                      </span>
+                      {observabilityEnabled === false ? (
+                        <>
+                          <p className="text-sm font-medium text-text-main">Request details capture is off</p>
+                          <p className="text-xs">
+                            Per-request payloads, latency and token breakdown are only recorded
+                            while Observability is enabled.
+                          </p>
+                          <a
+                            href="/dashboard/profile"
+                            className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                          >
+                            Enable Observability in Settings
+                            <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                          </a>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-sm font-medium text-text-main">No request details in this period</p>
+                          <p className="text-xs">
+                            Adjust the provider or date filters, or make a request through the gateway.
+                          </p>
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ) : (
