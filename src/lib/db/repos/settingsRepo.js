@@ -16,6 +16,7 @@ const DEFAULT_SETTINGS = {
   providerRevalidation: {},
   comboOrdering: {},
   branding: { appName: "", logoDataUrl: "", faviconDataUrl: "", primaryColor: "" },
+  mcpAllowAdmin: false,
   quotaVisibility: {},
   comboStrategy: "fallback",
   comboStickyRoundRobinLimit: 1,

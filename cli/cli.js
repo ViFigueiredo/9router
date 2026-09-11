@@ -80,6 +80,17 @@ if (args[0] === "xai" && args[1] === "video") {
   return;
 }
 
+if (args[0] === "mcp-stdio") {
+  const { run } = require("./src/cli/commands/mcpStdio");
+  run(args.slice(1))
+    .then((code) => process.exit(code))
+    .catch((err) => {
+      console.error(`❌ ${err?.message || err}`);
+      process.exit(1);
+    });
+  return;
+}
+
 // Self-heal SQLite runtime deps (sql.js + better-sqlite3) into ~/.9router/runtime
 // so the server can resolve them via NODE_PATH. Best-effort — sql.js is required,
 // better-sqlite3 is optional. Logs to stderr only on failure.
