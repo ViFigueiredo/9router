@@ -1,3 +1,8 @@
+# v0.5.77 (2026-09-11)
+
+## Fixes
+- **Personalization**: the configured favicon/title no longer flicker back to the default while navigating. The dashboard pages were being prerendered at build time with the default branding baked into their HTML and RSC payload; the `(dashboard)` segment (and the `/dashboard/*` branch outside the route group) now render per request with their own `generateMetadata`, so the instance branding is always in the served HTML — 0 prerendered dashboard routes
+
 # v0.5.76 (2026-09-11)
 
 ## Fixes
