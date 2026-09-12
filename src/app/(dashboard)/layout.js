@@ -1,5 +1,6 @@
 import { DashboardLayout } from "@/shared/components";
 import { DEFAULT_FAVICON, DEFAULT_TITLE, TITLE_SUFFIX } from "@/shared/constants/branding";
+import { brandingIconUrl } from "@/lib/brandingIcon";
 
 // Branding lives in per-instance settings, so this segment must render per request:
 // a prerendered dashboard keeps the build-time default title/favicon in its HTML and
@@ -14,7 +15,7 @@ export async function generateMetadata() {
     const name = String(branding.appName || "").trim();
     return {
       title: name ? `${name} - ${TITLE_SUFFIX}` : DEFAULT_TITLE,
-      icons: { icon: branding.faviconDataUrl || DEFAULT_FAVICON },
+      icons: { icon: brandingIconUrl(branding.faviconDataUrl) },
     };
   } catch {
     // A settings read must never break rendering.

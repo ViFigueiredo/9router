@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { DEFAULT_FAVICON } from "@/shared/constants/branding";
+import { brandingIconUrl } from "@/lib/brandingIcon";
 
 export const dynamic = "force-dynamic";
 
@@ -19,8 +19,7 @@ async function readBranding() {
 export async function GET() {
   const branding = await readBranding();
   const name = String(branding.appName || "").trim();
-  const icon = branding.faviconDataUrl || DEFAULT_FAVICON;
-  const isSvg = icon.startsWith("/") && icon.endsWith(".svg");
+  const icon = brandingIconUrl(branding.faviconDataUrl);
 
   return NextResponse.json({
     name: name ? `${name} - AI Infrastructure Management` : "9Router - AI Infrastructure Management",
@@ -32,28 +31,12 @@ export async function GET() {
     theme_color: "#0a0a0a",
     orientation: "portrait-primary",
     icons: [
-      {
-        src: icon,
-        sizes: "any",
-        type: isSvg ? "image/svg+xml" : null,
-      },
-      {
-        src: "/icons/icon-192.svg",
-        sizes: "192x192",
-        type: "image/svg+xml",
-      },
-      {
-        src: "/icons/icon-512.svg",
-        sizes: "512x512",
-        type: "image/svg+xml",
-      },
-      {
-        src: "/icons/icon-512.svg",
-        sizes: "512x512",
-        type: "image/svg+xml",
-        purpose: "maskable",
-      },
-    ].map((entry) => (entry.type === null ? { src: entry.src, sizes: entry.sizes } : entry)),
+      // Configured icon first: Firefox/Chrome prefer the earlier, better-fitting entry.
+      { src: icon, sizes: "any" },
+      { src: "/icons/icon-192.svg", sizes: "192x192", type: "image/svg+xml" },
+      { src: "/icons/icon-512.svg", sizes: "512x512", type: "image/svg+xml" },
+      { src: "/icons/icon-512.svg", sizes: "512x512", type: "image/svg+xml", purpose: "maskable" },
+    ],
   }, {
     headers: {
       "Content-Type": "application/manifest+json",

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { iconVersion } from "@/lib/brandingIcon";
 
 export const dynamic = "force-dynamic";
 
@@ -14,11 +15,13 @@ export async function GET() {
       appName: branding.appName || "",
       logoDataUrl: branding.logoDataUrl || "",
       faviconDataUrl: branding.faviconDataUrl || "",
+      // Lets the client point at the cache-busted icon URL without hashing itself.
+      faviconVersion: iconVersion(branding.faviconDataUrl),
       primaryColor: branding.primaryColor || "",
     }, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return NextResponse.json(
-      { appName: "", logoDataUrl: "", faviconDataUrl: "", primaryColor: "" },
+      { appName: "", logoDataUrl: "", faviconDataUrl: "", faviconVersion: "", primaryColor: "" },
       { headers: { "Cache-Control": "no-store" } },
     );
   }

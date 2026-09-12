@@ -35,7 +35,7 @@ export function subscribeBranding(listener) {
 /** Apply name/logo/colors to the live document (client-only, fail-open). */
 export function applyBranding(branding) {
   if (typeof document === "undefined") return;
-  const { appName = "", faviconDataUrl = "", primaryColor = "" } = branding || {};
+  const { appName = "", faviconDataUrl = "", faviconVersion = "", primaryColor = "" } = branding || {};
   const root = document.documentElement;
 
   const vars = primaryColor ? brandingCssVars(primaryColor) : null;
@@ -49,7 +49,12 @@ export function applyBranding(branding) {
   const name = String(appName).trim();
   document.title = name ? `${name} - ${TITLE_SUFFIX}` : DEFAULT_TITLE;
 
-  const href = faviconDataUrl || DEFAULT_FAVICON;
+  // Prefer a real, cache-busted URL: some browsers (Firefox in particular) handle
+  // data-URI favicons poorly for bookmarks. Falls back to the data URL if the
+  // endpoint payload predates the version field.
+  const href = faviconDataUrl
+    ? (faviconVersion ? `/api/branding/icon?v=${faviconVersion}` : faviconDataUrl)
+    : DEFAULT_FAVICON;
   const links = [...document.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"]')];
   // The framework renders its own icon link from generateMetadata; prefer that one
   // and drop the link we may have created before hydration, so the document keeps

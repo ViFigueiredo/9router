@@ -6,6 +6,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/shared/components/ThemeProvider";
 import BrandingProvider from "@/shared/components/BrandingProvider";
 import { DEFAULT_FAVICON, DEFAULT_TITLE, TITLE_SUFFIX } from "@/shared/constants/branding";
+import { brandingIconUrl } from "@/lib/brandingIcon";
 import "@/lib/network/initOutboundProxy"; // Auto-initialize outbound proxy env
 import "@/shared/services/bootstrap"; // Auto-run initializeApp (watchdog, auto-resume tunnel)
 import { initConsoleLogCapture } from "@/lib/consoleLogBuffer";
@@ -47,7 +48,7 @@ export async function generateMetadata() {
       title: name ? `${name} - ${TITLE_SUFFIX}` : APP_TITLE,
       description: APP_DESCRIPTION,
       manifest: "/manifest.webmanifest",
-      icons: { icon: branding.faviconDataUrl || DEFAULT_FAVICON },
+      icons: { icon: brandingIconUrl(branding.faviconDataUrl) },
     };
   } catch {
     // Never let a settings read break rendering (e.g. during a cold build).
