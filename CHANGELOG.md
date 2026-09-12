@@ -1,3 +1,9 @@
+# v0.5.79 (2026-09-12)
+
+## Fixes
+- **Personalization**: the configured favicon is now served at a real URL instead of an inline data URI — `/favicon.ico` returns the configured icon (redirecting to a cache-busted `?v=<hash>` URL) and `/api/branding/icon?v=` serves the bytes with an immutable cache. Firefox reloads bookmark favicons from `/favicon.ico` rather than honouring `<link rel="icon">` (mozilla bug 2010865) and its favicon database handles data URIs poorly, so bookmarks used to keep the build-time icon
+- **Personalization**: metadata and the web manifest point at that versioned URL, so changing the favicon busts every cache that stores it
+
 # v0.5.78 (2026-09-12)
 
 ## Fixes
