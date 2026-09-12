@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { readBrandingIcon } from "@/lib/brandingIcon";
-import { DEFAULT_FAVICON } from "@/shared/constants/branding";
+import { readBrandingIcon, readDefaultIcon } from "@/lib/brandingIcon";
 
 export const dynamic = "force-dynamic";
 
@@ -8,23 +7,23 @@ export const dynamic = "force-dynamic";
 //
 // Firefox reloads bookmark favicons from this path instead of using <link rel="icon">
 // (mozilla bug 2010865), so it must return the configured icon; otherwise bookmarks
-// keep showing whatever icon was shipped with the build.
-export async function GET(request) {
-  const { searchParams } = new URL(request.url);
-  const icon = await readBrandingIcon();
-
+// keep showing the icon that shipped with the build.
+//
+// The bytes are returned directly (no redirect): a redirect built from request.url
+// would point at the container's internal host and be unreachable from the browser.
+// An ETag keyed on the icon content keeps revalidation cheap while letting the icon
+// change take effect, and the versioned URL from the metadata stays immutable.
+export async function GET() {
+  const icon = (await readBrandingIcon()) || (await readDefaultIcon());
   if (!icon) {
-    return NextResponse.redirect(new URL(DEFAULT_FAVICON, request.url), 302);
-  }
-  if (searchParams.get("v") !== icon.version) {
-    // Send browsers to the versioned URL so the cache busts when the icon changes.
-    return NextResponse.redirect(new URL(`/favicon.ico?v=${icon.version}`, request.url), 302);
+    return new NextResponse(null, { status: 404 });
   }
 
   return new NextResponse(icon.buffer, {
     headers: {
       "Content-Type": icon.mime,
-      "Cache-Control": "public, max-age=31536000, immutable",
+      "Cache-Control": "public, max-age=0, must-revalidate",
+      ETag: `"${icon.version}"`,
       "Content-Length": String(icon.buffer.length),
     },
   });

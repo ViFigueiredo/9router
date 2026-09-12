@@ -49,3 +49,20 @@ export function brandingIconUrl(faviconDataUrl) {
   if (!faviconDataUrl) return DEFAULT_FAVICON;
   return `/api/branding/icon?v=${iconVersion(faviconDataUrl)}`;
 }
+
+/**
+ * Shipped SVG icon, for when the instance has no favicon configured.
+ * Served from disk rather than redirected: a redirect built from `request.url`
+ * points at the container's internal host (e.g. https://0.0.0.0:20128), which the
+ * browser cannot follow.
+ */
+export async function readDefaultIcon() {
+  try {
+    const { readFile } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    const buffer = await readFile(join(process.cwd(), "public", DEFAULT_FAVICON.replace(/^\//, "")));
+    return { mime: "image/svg+xml", buffer, version: "default" };
+  } catch {
+    return null;
+  }
+}
