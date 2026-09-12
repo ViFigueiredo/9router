@@ -1,3 +1,8 @@
+# v0.5.80 (2026-09-12)
+
+## Fixes
+- **Personalization**: `/favicon.ico` and `/api/branding/icon` serve the icon bytes directly instead of redirecting — the redirect was built from `request.url`, which resolves to the container's internal host (`https://0.0.0.0:20128/...`), so browsers could not follow it and got an empty favicon. The `.ico` path now returns the configured icon with an `ETag` for cheap revalidation, and the shipped SVG when nothing is configured
+
 # v0.5.79 (2026-09-12)
 
 ## Fixes
