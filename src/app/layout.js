@@ -22,6 +22,12 @@ const inter = Inter({
 const APP_TITLE = DEFAULT_TITLE;
 const APP_DESCRIPTION = "One endpoint for all your AI providers. Manage keys, monitor usage, and scale effortlessly.";
 
+// Branding is per-instance state read from settings, so every route must render per
+// request: a prerendered page (login, landing) keeps the build-time default title,
+// favicon and manifest in its HTML, and the browser shows it instead of the
+// configured branding.
+export const dynamic = "force-dynamic";
+
 // Branding is derived from settings so Next itself renders the configured title and
 // favicon. Mutating document.head from the client is not enough: React reconciles
 // the metadata tags on every navigation and would restore the static values.
@@ -29,6 +35,7 @@ export async function generateMetadata() {
   const fallback = {
     title: APP_TITLE,
     description: APP_DESCRIPTION,
+    manifest: "/manifest.webmanifest",
     icons: { icon: DEFAULT_FAVICON },
   };
   try {
@@ -39,6 +46,7 @@ export async function generateMetadata() {
     return {
       title: name ? `${name} - ${TITLE_SUFFIX}` : APP_TITLE,
       description: APP_DESCRIPTION,
+      manifest: "/manifest.webmanifest",
       icons: { icon: branding.faviconDataUrl || DEFAULT_FAVICON },
     };
   } catch {

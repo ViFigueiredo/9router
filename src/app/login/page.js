@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { Card, Button, Input } from "@/shared/components";
+import { useBranding } from "@/shared/components/BrandingProvider";
 
 export default function LoginPage() {
+  const branding = useBranding();
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [resetHint, setResetHint] = useState("");
@@ -155,7 +157,17 @@ export default function LoginPage() {
       <div className="landing-grid absolute inset-0 pointer-events-none" aria-hidden="true" />
       <div className="relative z-10 w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-primary mb-2">9Router</h1>
+          {branding.logoDataUrl && (
+            <span
+              role="img"
+              aria-label="Instance logo"
+              className="mx-auto mb-3 block size-12 bg-contain bg-center bg-no-repeat"
+              style={{ backgroundImage: `url("${branding.logoDataUrl}")` }}
+            />
+          )}
+          <h1 className="text-3xl font-bold text-primary mb-2">
+            {branding.appName?.trim() || "9Router"}
+          </h1>
           <p className="text-text-muted">
             {samlAvailable
               ? "Sign in with SAML 2.0 Single Sign-On"

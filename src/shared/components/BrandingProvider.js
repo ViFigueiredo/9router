@@ -96,9 +96,11 @@ export default function BrandingProvider({ children }) {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/settings", { cache: "no-store" });
+        // Public endpoint: /api/settings needs a session, which unauthenticated pages
+        // like the login screen never have.
+        const res = await fetch("/api/branding", { cache: "no-store" });
         const data = res.ok ? await res.json() : {};
-        if (!cancelled) setBrandingState(data.branding || {});
+        if (!cancelled) setBrandingState(data || {});
       } catch {
         // Keep the shipped branding on any failure.
       }
