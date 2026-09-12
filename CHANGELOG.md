@@ -1,3 +1,9 @@
+# v0.5.78 (2026-09-12)
+
+## Fixes
+- **Personalization**: the branding now reaches every page, including the ones outside the dashboard. The whole app renders per request (`force-dynamic` at the root layout — previously `/login` and `/landing` were prerendered with the default title/favicon baked in), the web manifest is generated per request instead of a static file that declared the default name/icons, and unauthenticated pages read branding from a new public `/api/branding` endpoint (`/api/settings` requires a session, so the client could never apply it on the login screen)
+- **Personalization**: the login screen shows the configured app name and logo instead of the hardcoded "9Router"
+
 # v0.5.77 (2026-09-11)
 
 ## Fixes
