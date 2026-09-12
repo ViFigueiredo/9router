@@ -1,9 +1,8 @@
-import { DashboardLayout } from "@/shared/components";
 import { DEFAULT_FAVICON, DEFAULT_TITLE, TITLE_SUFFIX } from "@/shared/constants/branding";
 
-// Branding lives in per-instance settings, so this segment must render per request:
-// a prerendered dashboard keeps the build-time default title/favicon in its HTML and
-// RSC payload, and the browser flips back to it as soon as the user navigates.
+// Pages outside the (dashboard) route group (e.g. /dashboard/settings/pricing) do not
+// inherit its dynamic config; without this they prerender with the build-time default
+// branding and the browser flips back to it on navigation.
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata() {
@@ -17,11 +16,10 @@ export async function generateMetadata() {
       icons: { icon: branding.faviconDataUrl || DEFAULT_FAVICON },
     };
   } catch {
-    // A settings read must never break rendering.
     return { title: DEFAULT_TITLE, icons: { icon: DEFAULT_FAVICON } };
   }
 }
 
-export default function DashboardRootLayout({ children }) {
-  return <DashboardLayout>{children}</DashboardLayout>;
+export default function DashboardSegmentLayout({ children }) {
+  return children;
 }
